@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stream Specifications</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      padding: 20px;
+      overflow-y: auto;
+      height: 100vh;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 20px;
+    }
+    .header {
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 12px;
+      margin-bottom: 4px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .stream-url {
+      font-size: 11px;
+      color: var(--text-muted);
+      word-break: break-all;
+      margin-top: 4px;
+      user-select: text;
+    }
+    .section {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 14px;
+      backdrop-filter: blur(10px);
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      row-gap: 8px;
+      font-size: 13px;
+    }
+    .label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .value {
+      color: var(--text-main);
+      word-break: break-all;
+      user-select: text;
+    }
+    .loader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      gap: 16px;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(0, 242, 254, 0.1);
+      border-top: 3px solid var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error-container {
+      color: #ff4a5a;
+      border: 1px solid rgba(255, 74, 90, 0.2);
+      background: rgba(255, 74, 90, 0.05);
+      border-radius: var(--border-radius);
+      padding: 14px;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="content">
+    <div class="loader">
+      <div class="spinner"></div>
+      <div id="loader-msg">Probing stream specifications...</div>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      window.electronAPI.requestStreamInfo();
+    });
+
+    window.electronAPI.onStreamInfoDetails((data) => {
+      const content = document.getElementById('content');
+      
+      if (data.error) {
+        content.innerHTML = `
+          <div class="header">
+            <h1>Stream Specifications</h1>
+          </div>
+          <div class="error-container">
+            <strong>Probing Failed:</strong><br>${data.error}
+          </div>
+        `;
+        return;
+      }
+
+      if (data.loading) {
+        document.getElementById('loader-msg').innerHTML = `Analyzing active stream: <strong>${data.name}</strong>...`;
+        return;
+      }
+
+      // Probing completed successfully!
+      const specs = data.specs;
+      const format = specs.format || {};
+      const streams = specs.streams || [];
+      
+      const videoStream = streams.find(s => s.codec_type === 'video') || {};
+      const audioStream = streams.find(s => s.codec_type === 'audio') || {};
+
+      // Calculate bitrates
+      const totalBitrate = format.bit_rate ? Math.round(format.bit_rate / 1000) + ' kbps' : 'Unknown';
+      const videoBitrate = videoStream.bit_rate ? Math.round(videoStream.bit_rate / 1000) + ' kbps' : 'Unknown';
+      const audioBitrate = audioStream.bit_rate ? Math.round(audioStream.bit_rate / 1000) + ' kbps' : 'Unknown';
+
+      // Parse channels
+      let channelsText = 'Unknown';
+      if (audioStream.channels) {
+        if (audioStream.channels === 1) channelsText = 'Mono (1.0)';
+        else if (audioStream.channels === 2) channelsText = 'Stereo (2.0)';
+        else if (audioStream.channels === 6) channelsText = 'Surround (5.1)';
+        else channelsText = `${audioStream.channels} Channels`;
+      }
+
+      content.innerHTML = `
+        <div class="header">
+          <h1>${data.name}</h1>
+          <div class="stream-url">${data.url}</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">General Details</div>
+          <div class="spec-grid">
+            <div class="label">Format / Container</div>
+            <div class="value">${format.format_long_name || format.format_name || 'MPEG-TS'}</div>
+            <div class="label">Total Bitrate</div>
+            <div class="value">${totalBitrate}</div>
+            <div class="label">Duration</div>
+            <div class="value">${format.duration ? Math.round(format.duration) + ' seconds' : 'Live Stream'}</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Video Stream</div>
+          <div class="spec-grid">
+            <div class="label">Codec</div>
+            <div class="value">${videoStream.codec_name ? videoStream.codec_name.toUpperCase() : 'Unknown'}</div>
+            <div class="label">Resolution</div>
+            <div class="value">${videoStream.width && videoStream.height ? `${videoStream.width}x${videoStream.height}` : 'Unknown'}</div>
+            <div class="label">Aspect Ratio</div>
+            <div class="value">${videoStream.display_aspect_ratio || 'Unknown'}</div>
+            <div class="label">Frame Rate</div>
+            <div class="value">${videoStream.r_frame_rate ? Math.round(eval(videoStream.r_frame_rate)) + ' fps' : 'Unknown'}</div>
+            <div class="label">Pixel Format</div>
+            <div class="value">${videoStream.pix_fmt || 'Unknown'}</div>
+            <div class="label">Video Bitrate</div>
+            <div class="value">${videoBitrate}</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Audio Stream</div>
+          <div class="spec-grid">
+            <div class="label">Codec</div>
+            <div class="value">${audioStream.codec_name ? audioStream.codec_name.toUpperCase() : 'Unknown'}</div>
+            <div class="label">Channels</div>
+            <div class="value">${channelsText}</div>
+            <div class="label">Sample Rate</div>
+            <div class="value">${audioStream.sample_rate ? audioStream.sample_rate + ' Hz' : 'Unknown'}</div>
+            <div class="label">Audio Bitrate</div>
+            <div class="value">${audioBitrate}</div>
+          </div>
+        </div>
+      `;
+    });
+  </script>
+</body>
+</html>

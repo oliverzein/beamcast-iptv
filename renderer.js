@@ -377,6 +377,9 @@ function playChannel(name, group, logo, streamUrl) {
   activeStreamUrl = streamUrl;
   seekOffset = 0;
   
+  // Notify main process of active stream
+  window.electronAPI.setPlaybackActive(name, streamUrl);
+  
   if (ctrlMpv) {
     ctrlMpv.style.display = 'inline-flex';
   }
@@ -548,6 +551,10 @@ function destroyPlayer() {
 
 function stopPlayback() {
   destroyPlayer();
+  
+  // Notify main process playback stopped
+  window.electronAPI.setPlaybackInactive();
+  
   videoPlayer.removeAttribute('src');
   videoPlayer.load();
   

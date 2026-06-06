@@ -53,6 +53,17 @@ function createMenu() {
       ]
     },
     {
+      label: 'Playback',
+      submenu: [
+        {
+          label: 'Stream Info...',
+          click: () => {
+            showStreamInfoWindow();
+          }
+        }
+      ]
+    },
+    {
       label: 'View',
       submenu: [
         { role: 'reload' },
@@ -97,25 +108,13 @@ function isLiveUrl(streamUrl) {
   }
 }
 
-function getVideoCodec(streamUrl, isLive) {
-  if (isLive) {
-    return Promise.resolve('h264'); // skip detection for live streams for fast zapping
-  }
-  return new Promise((resolve) => {
-    const ffprobeArgs = [
-      '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream=codec_name',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
-      '-timeout', '3000000', // 3 seconds timeout for socket connection
-      streamUrl
-    ];
-    
-    console.log(`Running ffprobe on stream: ${streamUrl}`);
+// Execute ffprobe command with a fallback timeout
+function runFfprobeCommand(ffprobeArgs, timeoutMs) {
+  return new Promise((resolve, reject) => {
     const ffprobe = spawn('ffprobe', ffprobeArgs);
     let output = '';
     let stderr = '';
-    
+
     ffprobe.stdout.on('data', (data) => {
       output += data.toString();
     });
@@ -123,30 +122,52 @@ function getVideoCodec(streamUrl, isLive) {
     ffprobe.stderr.on('data', (data) => {
       stderr += data.toString();
     });
-    
+
     ffprobe.on('close', (code) => {
-      const codec = output.trim();
       if (code !== 0) {
-        console.error(`[ffprobe] failed with code ${code}. Stderr: ${stderr.trim()}`);
-      } else {
-        console.log(`[ffprobe] detected codec: ${codec || 'unknown'}`);
+        reject(new Error(`ffprobe failed with code ${code}. ${stderr.trim()}`));
+        return;
       }
-      resolve(codec || 'unknown');
+      resolve(output.trim());
     });
-    
+
     ffprobe.on('error', (err) => {
-      console.error('ffprobe error:', err);
-      resolve('unknown');
+      reject(err);
     });
-    
-    // Set a fallback timeout of 4 seconds just in case ffprobe hangs
+
     setTimeout(() => {
       try {
         ffprobe.kill('SIGKILL');
       } catch (e) {}
-      resolve('unknown');
-    }, 4000);
+      reject(new Error('ffprobe timed out'));
+    }, timeoutMs);
   });
+}
+
+function getVideoCodec(streamUrl, isLive) {
+  if (isLive) {
+    return Promise.resolve('h264'); // skip detection for live streams for fast zapping
+  }
+  const ffprobeArgs = [
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=codec_name',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    '-timeout', '3000000', // 3 seconds timeout for socket connection
+    streamUrl
+  ];
+  
+  console.log(`Running ffprobe on stream: ${streamUrl}`);
+  return runFfprobeCommand(ffprobeArgs, 4000)
+    .then((output) => {
+      const codec = output.trim();
+      console.log(`[ffprobe] detected codec: ${codec || 'unknown'}`);
+      return codec || 'unknown';
+    })
+    .catch((err) => {
+      console.error('[ffprobe] error detecting video codec:', err);
+      return 'unknown';
+    });
 }
 
 // Write CORS and Private Network Access headers
@@ -389,6 +410,98 @@ ipcMain.on('open-in-mpv', (event, streamUrl) => {
     stdio: 'ignore'
   });
   mpvProcess.unref();
+});
+
+let activeStream = null;
+let streamInfoWindow = null;
+
+ipcMain.on('set-playback-active', (event, data) => {
+  console.log(`Playback active: ${data.name} (${data.url})`);
+  activeStream = data;
+});
+
+ipcMain.on('set-playback-inactive', () => {
+  console.log('Playback inactive');
+  activeStream = null;
+});
+
+function runFfprobeSpecs(streamUrl) {
+  const ffprobeArgs = [
+    '-v', 'error',
+    '-show_format',
+    '-show_streams',
+    '-of', 'json',
+    '-timeout', '5000000', // 5 seconds connection timeout
+    streamUrl
+  ];
+
+  console.log(`Running full ffprobe on stream: ${streamUrl}`);
+  return runFfprobeCommand(ffprobeArgs, 6000).then((output) => {
+    return JSON.parse(output);
+  });
+}
+
+function showStreamInfoWindow() {
+  if (streamInfoWindow) {
+    streamInfoWindow.focus();
+    return;
+  }
+
+  streamInfoWindow = new BrowserWindow({
+    width: 600,
+    height: 500,
+    title: "Stream Specifications",
+    icon: path.join(__dirname, 'assets/logo.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+    parent: mainWindow,
+    modal: false,
+    resizable: true,
+    backgroundColor: '#0a0b10'
+  });
+
+  streamInfoWindow.setMenu(null);
+  streamInfoWindow.loadFile('stream_info.html');
+
+  streamInfoWindow.on('closed', () => {
+    streamInfoWindow = null;
+  });
+}
+
+ipcMain.on('request-stream-info', (event) => {
+  if (!activeStream) {
+    event.reply('stream-info-details', { error: 'No active stream playing.' });
+    return;
+  }
+
+  event.reply('stream-info-details', { 
+    loading: true, 
+    name: activeStream.name, 
+    url: activeStream.url 
+  });
+
+  runFfprobeSpecs(activeStream.url).then(specs => {
+    if (streamInfoWindow) {
+      streamInfoWindow.webContents.send('stream-info-details', {
+        loading: false,
+        name: activeStream.name,
+        url: activeStream.url,
+        specs: specs
+      });
+    }
+  }).catch(err => {
+    if (streamInfoWindow) {
+      streamInfoWindow.webContents.send('stream-info-details', {
+        loading: false,
+        name: activeStream.name,
+        url: activeStream.url,
+        error: `Failed to probe stream: ${err.message}`
+      });
+    }
+  });
 });
 
 const PORT = 18080;

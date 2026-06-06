@@ -15,5 +15,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTranscodeStatus: (callback) => {
     ipcRenderer.on('transcode-status', (event, data) => callback(data));
+  },
+  setPlaybackActive: (streamName, streamUrl) => {
+    ipcRenderer.send('set-playback-active', { name: streamName, url: streamUrl });
+  },
+  setPlaybackInactive: () => {
+    ipcRenderer.send('set-playback-inactive');
+  },
+  requestStreamInfo: () => {
+    ipcRenderer.send('request-stream-info');
+  },
+  onStreamInfoDetails: (callback) => {
+    ipcRenderer.on('stream-info-details', (event, data) => callback(data));
   }
 });
