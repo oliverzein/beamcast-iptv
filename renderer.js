@@ -788,6 +788,26 @@ async function loadAccountsList() {
   }
 }
 
+// Set active Xtream Codes account and update UI / state
+function setActiveXtreamAccount(account) {
+  activeAccount = account;
+  activePlaylistType = 'xtream';
+  activeTab = 'live';
+  sidebarTabs.style.display = 'flex';
+  tabButtons.forEach(b => b.classList.remove('active'));
+  const liveTabBtn = document.querySelector('.tab-btn[data-tab="live"]');
+  if (liveTabBtn) liveTabBtn.classList.add('active');
+  
+  // Save state to localStorage
+  localStorage.setItem('lastPlaylistType', 'xtream');
+  localStorage.setItem('lastAccountId', account.id);
+  localStorage.setItem('lastTab', activeTab);
+  localStorage.setItem('lastSelectedCategory', 'all');
+  
+  // Show sync button
+  btnSyncXtream.style.display = 'inline-flex';
+}
+
 // Connect and Cache Xtream Codes Account
 async function connectXtreamAccount(account, forceSync = false) {
   accountsModal.style.display = 'none';
@@ -798,21 +818,7 @@ async function connectXtreamAccount(account, forceSync = false) {
 
   if (isCacheValid && !forceSync) {
     console.log(`[Xtream Connect] Using cached data for account: ${account.name}`);
-    activeAccount = account;
-    activePlaylistType = 'xtream';
-    activeTab = 'live';
-    sidebarTabs.style.display = 'flex';
-    tabButtons.forEach(b => b.classList.remove('active'));
-    document.querySelector('.tab-btn[data-tab="live"]').classList.add('active');
-    
-    // Save state to localStorage
-    localStorage.setItem('lastPlaylistType', 'xtream');
-    localStorage.setItem('lastAccountId', account.id);
-    localStorage.setItem('lastTab', activeTab);
-    localStorage.setItem('lastSelectedCategory', 'all');
-    
-    // Show sync button
-    btnSyncXtream.style.display = 'inline-flex';
+    setActiveXtreamAccount(account);
     
     loaderOverlay.classList.add('active');
     loaderText.textContent = "Loading account from local cache...";
@@ -871,21 +877,8 @@ async function connectXtreamAccount(account, forceSync = false) {
     await IPTVDb.addAccount(account);
 
     // Set Active Account
-    activeAccount = account;
-    activePlaylistType = 'xtream';
-    activeTab = 'live';
-    sidebarTabs.style.display = 'flex';
-    tabButtons.forEach(b => b.classList.remove('active'));
-    document.querySelector('.tab-btn[data-tab="live"]').classList.add('active');
-
-    // Save state to localStorage
-    localStorage.setItem('lastPlaylistType', 'xtream');
-    localStorage.setItem('lastAccountId', account.id);
-    localStorage.setItem('lastTab', activeTab);
-    localStorage.setItem('lastSelectedCategory', 'all');
-
-    // Show sync button
-    btnSyncXtream.style.display = 'inline-flex';
+    // Set Active Account and update UI
+    setActiveXtreamAccount(account);
 
     // Reload sidebar
     await loadXtreamSidebar();
@@ -1077,6 +1070,19 @@ function renderEpisodesGrid(seasonNum) {
   });
 }
 
+// Restore previously playing stream if saved in localStorage
+function restoreLastStream(typePrefix = "") {
+  const streamUrl = localStorage.getItem('lastStreamUrl');
+  const streamName = localStorage.getItem('lastStreamName');
+  const streamGroup = localStorage.getItem('lastStreamGroup');
+  const streamLogo = localStorage.getItem('lastStreamLogo');
+  
+  if (streamUrl && streamName) {
+    console.log(`[State Restore] Restoring ${typePrefix ? typePrefix + ' ' : ''}stream: ${streamName}`);
+    playChannel(streamName, streamGroup, streamLogo, streamUrl);
+  }
+}
+
 async function restoreLastState() {
   const lastPlaylistType = localStorage.getItem('lastPlaylistType');
   const lastAccountId = localStorage.getItem('lastAccountId');
@@ -1108,15 +1114,7 @@ async function restoreLastState() {
         await loadXtreamSidebar();
         
         // 2. Restore active stream if saved
-        const streamUrl = localStorage.getItem('lastStreamUrl');
-        const streamName = localStorage.getItem('lastStreamName');
-        const streamGroup = localStorage.getItem('lastStreamGroup');
-        const streamLogo = localStorage.getItem('lastStreamLogo');
-        
-        if (streamUrl && streamName) {
-          console.log(`[State Restore] Restoring stream: ${streamName}`);
-          playChannel(streamName, streamGroup, streamLogo, streamUrl);
-        }
+        restoreLastStream();
       } else {
         loadPresetChannels(defaultChannels);
       }
@@ -1131,15 +1129,7 @@ async function restoreLastState() {
       activePlaylistType = 'm3u';
       await fetchPlaylist(lastM3uUrl);
       
-      const streamUrl = localStorage.getItem('lastStreamUrl');
-      const streamName = localStorage.getItem('lastStreamName');
-      const streamGroup = localStorage.getItem('lastStreamGroup');
-      const streamLogo = localStorage.getItem('lastStreamLogo');
-      
-      if (streamUrl && streamName) {
-        console.log(`[State Restore] Restoring M3U stream: ${streamName}`);
-        playChannel(streamName, streamGroup, streamLogo, streamUrl);
-      }
+      restoreLastStream('M3U');
     } else {
       loadPresetChannels(defaultChannels);
     }
