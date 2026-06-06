@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beamcast IPTV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">📡</span>
+          <h1>Beamcast<span>IPTV</span></h1>
+        </div>
+      </div>
+
+      <!-- Playlist Source selector -->
+      <div class="playlist-manager">
+        <div class="input-group">
+          <input type="text" id="m3u-url" placeholder="Enter M3U Playlist URL..." value="https://iptv-org.github.io/iptv/categories/news.m3u">
+          <button id="btn-load-url" class="btn btn-primary">Load</button>
+        </div>
+        <div class="file-uploader">
+          <span class="divider">or</span>
+          <label for="m3u-file" class="file-upload-label">
+            <span class="upload-icon">📁</span> Select local M3U file
+          </label>
+          <input type="file" id="m3u-file" accept=".m3u,.m3u8" style="display: none;">
+        </div>
+      </div>
+
+      <!-- Xtream Codes Content Tabs (hidden by default) -->
+      <div class="sidebar-tabs" id="sidebar-tabs" style="display: none;">
+        <button class="tab-btn active" data-tab="live">Live TV</button>
+        <button class="tab-btn" data-tab="vod">Movies</button>
+        <button class="tab-btn" data-tab="series">Series</button>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="search-filter-container">
+        <input type="text" id="channel-search" placeholder="🔍 Search channel...">
+        <div class="select-wrapper">
+          <select id="category-filter">
+            <option value="all">All Categories</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Channel List -->
+      <div class="channel-list-container">
+        <div class="channel-count" id="channel-count">0 channels loaded</div>
+        <ul class="channel-list" id="channel-list">
+          <li class="placeholder-item">No channels loaded. Load a playlist to start.</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content (Player & Info) -->
+    <main class="main-content">
+      <!-- Top Bar / Active Channel Info -->
+      <header class="top-bar">
+        <div class="active-channel-info" id="active-channel-info">
+          <div class="channel-logo-placeholder" id="active-logo-container">📡</div>
+          <div>
+            <h2 id="active-channel-name">No Channel Selected</h2>
+            <p id="active-channel-group" class="neon-text">Select a stream from the sidebar to begin playback</p>
+          </div>
+        </div>
+        <div class="top-bar-right" style="display: flex; align-items: center; gap: 12px;">
+          <div id="playback-badge" class="playback-badge" style="display: none;"></div>
+          <button id="btn-sync-xtream" class="btn-sm btn-sm-primary" style="display: none; align-items: center; gap: 6px;">🔄 Sync Cache</button>
+          <div class="status-indicator">
+            <span class="pulse-dot green" id="status-dot"></span>
+            <span id="status-text">Ready</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Video Player Frame -->
+      <div class="player-frame">
+        <!-- Main video player container -->
+        <div class="video-container" id="video-container">
+          <video id="video-player" poster="assets/placeholder.png"></video>
+          
+          <!-- Custom Player Controls overlay -->
+          <div class="custom-controls" id="custom-controls">
+            <!-- VOD Seek Timeline (hidden for Live TV) -->
+            <div class="timeline-container" id="timeline-container" style="display: none;">
+              <span class="time-label" id="time-current">00:00:00</span>
+              <input type="range" id="seek-bar" min="0" max="100" value="0">
+              <span class="time-label" id="time-duration">00:00:00</span>
+            </div>
+            
+            <div class="control-row">
+              <button id="ctrl-play" class="ctrl-btn">▶</button>
+              <button id="ctrl-stop" class="ctrl-btn">⏹</button>
+              <div class="volume-container">
+                <button id="ctrl-mute" class="ctrl-btn">🔊</button>
+                <input type="range" id="ctrl-volume" min="0" max="1" step="0.05" value="1">
+              </div>
+              <div class="stream-info" id="stream-info">LIVE</div>
+              <button id="ctrl-mpv" class="ctrl-btn" title="Open in External MPV Player" style="margin-right: 6px; display: none;">🎬 MPV</button>
+              <button id="ctrl-fullscreen" class="ctrl-btn">⛶</button>
+            </div>
+          </div>
+
+          <!-- Loading Spinner overlay -->
+          <div class="loader-overlay" id="loader-overlay">
+            <div class="spinner"></div>
+            <p id="loader-text">Decoding AC3 stream...</p>
+          </div>
+
+          <!-- Playback Error overlay -->
+          <div class="error-overlay" id="playback-error-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(7, 9, 14, 0.9); backdrop-filter: blur(8px); flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 6; padding: 24px; text-align: center;">
+            <div class="error-icon" style="font-size: 48px; filter: drop-shadow(0 0 10px rgba(255, 69, 58, 0.5));">⚠️</div>
+            <h3 style="font-size: 18px; color: #ff453a; font-weight: 600;">Playback Error</h3>
+            <p id="playback-error-text" style="font-size: 14px; color: var(--text-muted); max-width: 80%; line-height: 1.4;">Failed to decode stream. The stream might be offline or URL incorrect.</p>
+            <button id="btn-close-error" class="btn-sm btn-sm-danger" style="margin-top: 10px;">Dismiss</button>
+          </div>
+        </div>
+
+        <!-- Series Season/Episode Grid (hidden by default) -->
+        <div class="episodes-container" id="episodes-container" style="display: none;">
+          <div class="series-meta">
+            <img class="series-cover" id="series-cover" src="" alt="Series Cover">
+            <div class="series-details">
+              <h2 id="series-title">Series Title</h2>
+              <p id="series-plot">Plot description here...</p>
+              <div class="select-wrapper season-select-wrapper">
+                <select id="season-select">
+                  <option value="">Select Season</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="episodes-grid-container">
+            <h3>Episodes</h3>
+            <div class="episodes-grid" id="episodes-grid">
+              <!-- Dynamically populated episodes cards -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Accounts Manager Modal Dialog (hidden by default) -->
+  <div class="modal-overlay" id="accounts-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Xtream Codes Accounts</h2>
+        <button id="btn-close-modal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Saved accounts list -->
+        <div class="saved-accounts-section">
+          <h3>Saved Accounts</h3>
+          <ul class="accounts-list" id="accounts-list">
+            <li class="empty-list-placeholder">No saved accounts found.</li>
+          </ul>
+        </div>
+        
+        <!-- Add/Edit account form -->
+        <div class="account-form-section">
+          <h3>Add New Account</h3>
+          <form id="account-form" onsubmit="return false;">
+            <div class="form-group">
+              <label for="acc-name">Profile Name</label>
+              <input type="text" id="acc-name" placeholder="e.g. My Provider" required>
+            </div>
+            <div class="form-group">
+              <label for="acc-host">Server URL (Host:Port)</label>
+              <input type="text" id="acc-host" placeholder="e.g. line.provider.com:8080" required>
+            </div>
+            <div class="form-group">
+              <label for="acc-user">Username</label>
+              <input type="text" id="acc-user" placeholder="Enter username" required>
+            </div>
+            <div class="form-group">
+              <label for="acc-pass">Password</label>
+              <input type="password" id="acc-pass" placeholder="Enter password" required>
+            </div>
+            <button type="submit" id="btn-save-account" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Save Profile</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load dependencies -->
+  <script src="node_modules/mpegts.js/dist/mpegts.js"></script>
+  <script src="db.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
