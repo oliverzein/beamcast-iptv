@@ -165,7 +165,11 @@ function setupEventListeners() {
 
   channelSearch.addEventListener('input', filterChannels);
   categoryFilter.addEventListener('change', () => {
-    localStorage.setItem('lastSelectedCategory', categoryFilter.value);
+    if (activePlaylistType === 'xtream') {
+      localStorage.setItem(`lastCategory_${activeTab}`, categoryFilter.value);
+    } else {
+      localStorage.setItem('lastSelectedCategory', categoryFilter.value);
+    }
     filterChannels();
   });
 
@@ -1053,13 +1057,23 @@ async function loadXtreamSidebar() {
   });
 
   // Restore category selection from localStorage if valid
-  const lastSelectedCategory = localStorage.getItem('lastSelectedCategory') || 'all';
+  let lastSelectedCategory;
+  if (activePlaylistType === 'xtream') {
+    lastSelectedCategory = localStorage.getItem(`lastCategory_${activeTab}`) || 'all';
+  } else {
+    lastSelectedCategory = localStorage.getItem('lastSelectedCategory') || 'all';
+  }
+  
   const hasOption = Array.from(categoryFilter.options).some(opt => opt.value === lastSelectedCategory);
   if (hasOption) {
     categoryFilter.value = lastSelectedCategory;
   } else {
     categoryFilter.value = 'all';
-    localStorage.setItem('lastSelectedCategory', 'all');
+    if (activePlaylistType === 'xtream') {
+      localStorage.setItem(`lastCategory_${activeTab}`, 'all');
+    } else {
+      localStorage.setItem('lastSelectedCategory', 'all');
+    }
   }
 
   // Render list
