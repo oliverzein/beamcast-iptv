@@ -1178,6 +1178,15 @@ function renderEpisodesGrid(seasonNum) {
       playChannel(`${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`, ep.title, seriesCover.src, url);
     });
 
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const ext = ep.container_extension || 'mp4';
+      const baseUrl = getAccountBaseUrl(activeAccount);
+      const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
+      const name = `${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`;
+      window.electronAPI.showContextMenu(name, url);
+    });
+
     episodesGrid.appendChild(card);
   });
 }
