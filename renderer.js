@@ -320,6 +320,26 @@ function renderChannelList(list) {
       }
     });
 
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      
+      let streamUrl = null;
+      if (activePlaylistType === 'm3u') {
+        streamUrl = ch.url;
+      } else if (activeTab === 'live') {
+        const baseUrl = getAccountBaseUrl(activeAccount);
+        streamUrl = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
+      } else if (activeTab === 'vod') {
+        const baseUrl = getAccountBaseUrl(activeAccount);
+        const ext = ch.containerExtension || 'mp4';
+        streamUrl = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
+      }
+
+      if (streamUrl) {
+        window.electronAPI.showContextMenu(ch.name, streamUrl);
+      }
+    });
+
     if (activeChannelName && activeChannelName.textContent === ch.name) {
       li.classList.add('active');
       setTimeout(() => {
