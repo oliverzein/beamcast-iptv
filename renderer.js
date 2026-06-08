@@ -724,7 +724,7 @@ function setupAccountsModal() {
     clearEditState();
   });
 
-  // Save Account Submit
+  // Save/Update Account Submit
   accountForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = document.getElementById('acc-name').value.trim();
@@ -732,20 +732,72 @@ function setupAccountsModal() {
     const username = document.getElementById('acc-user').value.trim();
     const password = document.getElementById('acc-pass').value.trim();
     
-    const account = {
-      id: 'acc_' + Date.now(),
-      name,
-      host,
-      username,
-      password
-    };
+    if (editingAccountId) {
+      // Edit Mode: Account aktualisieren
+      try {
+        const list = await IPTVDb.getAccounts();
+        const originalAccount = list.find(acc => acc.id === editingAccountId);
+        
+        if (!originalAccount) {
+          throw new Error('Account not found in database');
+        }
 
-    try {
-      await IPTVDb.addAccount(account);
-      accountForm.reset();
-      loadAccountsList();
-    } catch (err) {
-      alert(`Database error: ${err.message}`);
+        const credentialsChanged = originalAccount.host !== host ||
+                                    originalAccount.username !== username ||
+                                    originalAccount.password !== password;
+
+        let lastSync = originalAccount.lastSync;
+
+        if (credentialsChanged) {
+          console.log(`[Edit Account] Connection details changed. Clearing cache for: ${originalAccount.name}`);
+          await IPTVDb.clearAccountCache(editingAccountId);
+          lastSync = null; // Sync erzwingen
+        }
+
+        const updatedAccount = {
+          id: editingAccountId,
+          name,
+          host,
+          username,
+          password,
+          lastSync
+        };
+
+        await IPTVDb.addAccount(updatedAccount);
+        
+        // Falls wir den aktuell aktiven Account bearbeitet haben, activeAccount aktualisieren
+        if (activeAccount && activeAccount.id === editingAccountId) {
+          activeAccount = updatedAccount;
+          statusText.textContent = `Active: ${name}`;
+          if (credentialsChanged) {
+            resetStatus();
+            channelList.innerHTML = '<li class="empty-list-placeholder">Account details updated. Please connect again to sync.</li>';
+            btnSyncXtream.style.display = 'none';
+          }
+        }
+
+        clearEditState();
+        loadAccountsList();
+      } catch (err) {
+        alert(`Database error: ${err.message}`);
+      }
+    } else {
+      // Add Mode: Neuen Account erstellen
+      const account = {
+        id: 'acc_' + Date.now(),
+        name,
+        host,
+        username,
+        password
+      };
+
+      try {
+        await IPTVDb.addAccount(account);
+        accountForm.reset();
+        loadAccountsList();
+      } catch (err) {
+        alert(`Database error: ${err.message}`);
+      }
     }
   });
 }
