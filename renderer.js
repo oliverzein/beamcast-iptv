@@ -789,6 +789,21 @@ async function loadAccountsList() {
       btnLoad.textContent = 'Connect';
       btnLoad.addEventListener('click', () => connectXtreamAccount(acc));
 
+      const btnEdit = document.createElement('button');
+      btnEdit.className = 'btn-sm btn-sm-secondary';
+      btnEdit.textContent = 'Edit';
+      btnEdit.addEventListener('click', () => {
+        editingAccountId = acc.id;
+        document.getElementById('acc-name').value = acc.name;
+        document.getElementById('acc-host').value = acc.host;
+        document.getElementById('acc-user').value = acc.username;
+        document.getElementById('acc-pass').value = acc.password;
+
+        if (accountFormTitle) accountFormTitle.textContent = `Edit Account: ${acc.name}`;
+        if (btnSaveAccount) btnSaveAccount.textContent = 'Update Profile';
+        if (btnCancelEdit) btnCancelEdit.style.display = 'block';
+      });
+
       const btnDelete = document.createElement('button');
       btnDelete.className = 'btn-sm btn-sm-danger';
       btnDelete.textContent = 'Delete';
@@ -801,6 +816,7 @@ async function loadAccountsList() {
       });
 
       actions.appendChild(btnLoad);
+      actions.appendChild(btnEdit);
       actions.appendChild(btnDelete);
       
       li.appendChild(info);
