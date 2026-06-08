@@ -10,6 +10,7 @@ app.commandLine.appendSwitch('enable-accelerated-video-decode');
 
 let mainWindow;
 let activeFfmpegProcess = null;
+let activeExternalProcess = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -403,13 +404,53 @@ const proxyServer = http.createServer((req, res) => {
   }
 });
 
-ipcMain.on('open-in-mpv', (event, streamUrl) => {
-  console.log(`Launching MPV for stream: ${streamUrl}`);
-  const mpvProcess = spawn('mpv', [streamUrl], {
+function launchExternalPlayer(streamUrl) {
+  // 1. Laufenden externen Prozess killen, falls vorhanden
+  if (activeExternalProcess) {
+    console.log('Killing previous external player process');
+    try {
+      activeExternalProcess.kill('SIGKILL');
+    } catch (e) {
+      console.error('Error killing previous external process:', e);
+    }
+    activeExternalProcess = null;
+  }
+
+  // 2. Laufenden internen FFmpeg-Transkodierungsprozess killen, falls vorhanden
+  if (activeFfmpegProcess) {
+    console.log('Killing active FFmpeg transcode process due to external player launch');
+    try {
+      activeFfmpegProcess.kill('SIGKILL');
+    } catch (e) {
+      console.error('Error killing FFmpeg transcode process:', e);
+    }
+    activeFfmpegProcess = null;
+  }
+
+  // 3. Renderer anweisen, das Playback-UI zu schließen
+  if (mainWindow) {
+    mainWindow.webContents.send('stop-playback');
+  }
+
+  // 4. Externen Player (aktuell MPV) starten
+  console.log(`Launching external player (mpv) for stream: ${streamUrl}`);
+  const externalProcess = spawn('mpv', [streamUrl], {
     detached: true,
     stdio: 'ignore'
   });
-  mpvProcess.unref();
+  externalProcess.unref();
+
+  activeExternalProcess = externalProcess;
+
+  externalProcess.on('exit', () => {
+    if (activeExternalProcess === externalProcess) {
+      activeExternalProcess = null;
+    }
+  });
+}
+
+ipcMain.on('open-in-mpv', (event, streamUrl) => {
+  launchExternalPlayer(streamUrl);
 });
 
 ipcMain.on('show-context-menu', (event, { name, url }) => {
@@ -417,12 +458,7 @@ ipcMain.on('show-context-menu', (event, { name, url }) => {
     {
       label: `Open "${name}" in MPV`,
       click: () => {
-        console.log(`Launching MPV for stream: ${url}`);
-        const mpvProcess = spawn('mpv', [url], {
-          detached: true,
-          stdio: 'ignore'
-        });
-        mpvProcess.unref();
+        launchExternalPlayer(url);
       }
     }
   ];
@@ -536,6 +572,9 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (activeFfmpegProcess) {
     activeFfmpegProcess.kill('SIGKILL');
+  }
+  if (activeExternalProcess) {
+    activeExternalProcess.kill('SIGKILL');
   }
   proxyServer.close();
   if (process.platform !== 'darwin') {
