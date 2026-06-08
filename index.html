@@ -168,7 +168,7 @@
         
         <!-- Add/Edit account form -->
         <div class="account-form-section">
-          <h3>Add New Account</h3>
+          <h3 id="account-form-title">Add New Account</h3>
           <form id="account-form" onsubmit="return false;">
             <div class="form-group">
               <label for="acc-name">Profile Name</label>
@@ -187,6 +187,7 @@
               <input type="password" id="acc-pass" placeholder="Enter password" required>
             </div>
             <button type="submit" id="btn-save-account" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Save Profile</button>
+            <button type="button" id="btn-cancel-edit" class="btn btn-secondary" style="display: none; width: 100%; margin-top: 10px;">Cancel</button>
           </form>
         </div>
       </div>
