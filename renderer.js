@@ -717,6 +717,13 @@ function setupTranscodeStatusListener() {
       playbackBadge.style.display = 'none';
     }
   });
+
+  window.electronAPI.onStopPlayback(() => {
+    console.log('[Renderer] Received stop-playback request from main process');
+    destroyPlayer();
+    videoContainer.style.display = 'none';
+    timelineContainer.style.display = 'none';
+  });
 }
 
 function clearEditState() {
