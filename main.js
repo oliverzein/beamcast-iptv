@@ -412,6 +412,25 @@ ipcMain.on('open-in-mpv', (event, streamUrl) => {
   mpvProcess.unref();
 });
 
+ipcMain.on('show-context-menu', (event, { name, url }) => {
+  const template = [
+    {
+      label: `Open "${name}" in MPV`,
+      click: () => {
+        console.log(`Launching MPV for stream: ${url}`);
+        const mpvProcess = spawn('mpv', [url], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        mpvProcess.unref();
+      }
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  menu.popup({ window: win });
+});
+
 let activeStream = null;
 let streamInfoWindow = null;
 
