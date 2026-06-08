@@ -422,6 +422,7 @@ function playChannel(name, group, logo, streamUrl) {
 
   activeStreamUrl = streamUrl;
   seekOffset = 0;
+  vodDuration = 0;
   
   // Notify main process of active stream
   window.electronAPI.setPlaybackActive(name, streamUrl);
@@ -678,9 +679,14 @@ function setupPlayerControls() {
   // Timeline seeking for VOD
   videoPlayer.addEventListener('durationchange', () => {
     if (activePlaylistType === 'xtream' && activeTab !== 'live') {
-      vodDuration = Math.floor(videoPlayer.duration);
-      seekBar.max = vodDuration;
-      timeDuration.textContent = formatTime(vodDuration);
+      const playerDuration = videoPlayer.duration;
+      if (playerDuration && isFinite(playerDuration) && playerDuration > 0) {
+        if (!vodDuration || playerDuration > vodDuration) {
+          vodDuration = Math.floor(playerDuration);
+          seekBar.max = vodDuration;
+          timeDuration.textContent = formatTime(vodDuration);
+        }
+      }
     }
   });
 
@@ -727,6 +733,12 @@ function setupTranscodeStatusListener() {
     
     // Only show badge if url matches active stream
     if (data && data.url) {
+      if (data.duration && data.duration > 0 && activePlaylistType === 'xtream' && activeTab !== 'live') {
+        vodDuration = Math.floor(data.duration);
+        seekBar.max = vodDuration;
+        timeDuration.textContent = formatTime(vodDuration);
+      }
+      
       playbackBadge.style.display = 'flex';
       if (data.transcoding) {
         playbackBadge.className = 'playback-badge transcode';

@@ -11,6 +11,7 @@ app.commandLine.appendSwitch('enable-accelerated-video-decode');
 let mainWindow;
 let activeFfmpegProcess = null;
 let activeExternalProcess = null;
+const metadataCache = new Map();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -145,15 +146,19 @@ function runFfprobeCommand(ffprobeArgs, timeoutMs) {
   });
 }
 
-function getVideoCodec(streamUrl, isLive) {
+function getVideoMetadata(streamUrl, isLive) {
   if (isLive) {
-    return Promise.resolve('h264'); // skip detection for live streams for fast zapping
+    return Promise.resolve({ codec: 'h264', duration: 0 });
+  }
+  if (metadataCache.has(streamUrl)) {
+    console.log(`[Proxy Cache] Hit for metadata of stream: ${streamUrl}`);
+    return Promise.resolve(metadataCache.get(streamUrl));
   }
   const ffprobeArgs = [
     '-v', 'error',
     '-select_streams', 'v:0',
-    '-show_entries', 'stream=codec_name',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
+    '-show_entries', 'stream=codec_name:format=duration',
+    '-of', 'json',
     '-timeout', '3000000', // 3 seconds timeout for socket connection
     streamUrl
   ];
@@ -161,13 +166,22 @@ function getVideoCodec(streamUrl, isLive) {
   console.log(`Running ffprobe on stream: ${streamUrl}`);
   return runFfprobeCommand(ffprobeArgs, 4000)
     .then((output) => {
-      const codec = output.trim();
-      console.log(`[ffprobe] detected codec: ${codec || 'unknown'}`);
-      return codec || 'unknown';
+      try {
+        const data = JSON.parse(output);
+        const codec = data.streams && data.streams[0] && data.streams[0].codec_name ? data.streams[0].codec_name : 'unknown';
+        const duration = data.format && data.format.duration ? parseFloat(data.format.duration) : 0;
+        console.log(`[ffprobe] detected codec: ${codec}, duration: ${duration}`);
+        const result = { codec, duration };
+        metadataCache.set(streamUrl, result);
+        return result;
+      } catch (e) {
+        console.error('[ffprobe] failed to parse JSON output:', e);
+        return { codec: 'unknown', duration: 0 };
+      }
     })
     .catch((err) => {
-      console.error('[ffprobe] error detecting video codec:', err);
-      return 'unknown';
+      console.error('[ffprobe] error detecting video metadata:', err);
+      return { codec: 'unknown', duration: 0 };
     });
 }
 
@@ -202,8 +216,8 @@ function handleStreamRequest(req, res, reqUrl) {
 
   const isLive = isLiveUrl(targetStreamUrl);
 
-  // Get codec info if VOD, then build ffmpeg command
-  getVideoCodec(targetStreamUrl, isLive).then((codec) => {
+  // Get codec and duration info if VOD, then build ffmpeg command
+  getVideoMetadata(targetStreamUrl, isLive).then(({ codec, duration }) => {
     if (req.destroyed) {
       console.log('Client closed connection during codec detection');
       return;
@@ -289,7 +303,8 @@ function handleStreamRequest(req, res, reqUrl) {
       mainWindow.webContents.send('transcode-status', {
         url: targetStreamUrl,
         transcoding: needTranscoding,
-        codec: codec
+        codec: codec,
+        duration: duration
       });
     }
 
