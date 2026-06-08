@@ -331,9 +331,11 @@ function renderChannelList(list) {
       if (activePlaylistType === 'm3u') {
         streamUrl = ch.url;
       } else if (activeTab === 'live') {
+        localStorage.setItem('lastSelectedId_live', ch.streamId);
         const baseUrl = getAccountBaseUrl(activeAccount);
         streamUrl = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
       } else if (activeTab === 'vod') {
+        localStorage.setItem('lastSelectedId_vod', ch.streamId);
         const baseUrl = getAccountBaseUrl(activeAccount);
         const ext = ch.containerExtension || 'mp4';
         streamUrl = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
@@ -1091,9 +1093,11 @@ function getAccountBaseUrl(account) {
 function handleXtreamClick(item) {
   const baseUrl = getAccountBaseUrl(activeAccount);
   if (activeTab === 'live') {
+    localStorage.setItem('lastSelectedId_live', item.streamId);
     const url = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${item.streamId}.ts`;
     playChannel(item.name, 'Live Channel', item.logo, url);
   } else if (activeTab === 'vod') {
+    localStorage.setItem('lastSelectedId_vod', item.streamId);
     const ext = item.containerExtension || 'mp4';
     const url = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${item.streamId}.${ext}`;
     playChannel(item.name, 'Movie', item.logo, url);
@@ -1104,6 +1108,9 @@ function handleXtreamClick(item) {
 
 // Loads Season/Episodes selector grid
 async function loadSeriesEpisodes(seriesItem) {
+  if (activePlaylistType === 'xtream') {
+    localStorage.setItem('lastSelectedId_series', seriesItem.seriesId);
+  }
   destroyPlayer();
   videoContainer.style.display = 'none';
   timelineContainer.style.display = 'none';
@@ -1148,7 +1155,11 @@ async function loadSeriesEpisodes(seriesItem) {
     });
 
     // Handle Season Select change
-    seasonSelect.onchange = () => renderEpisodesGrid(seasonSelect.value);
+    seasonSelect.onchange = () => {
+      const seasonVal = seasonSelect.value;
+      localStorage.setItem(`lastSeason_${seriesItem.seriesId}`, seasonVal);
+      renderEpisodesGrid(seasonVal);
+    };
     
     // Select first season by default
     if (seasons.length > 0) {
