@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProxySeekUrl: (streamUrl, startSeconds, supportsHEVC) => {
     return `http://127.0.0.1:18080/stream?url=${encodeURIComponent(streamUrl)}&start=${startSeconds}${supportsHEVC ? '&hevc=true' : ''}`;
   },
+  showContextMenu: (name, url) => {
+    ipcRenderer.send('show-context-menu', { name, url });
+  },
   openInMpv: (streamUrl) => {
     ipcRenderer.send('open-in-mpv', streamUrl);
   },
