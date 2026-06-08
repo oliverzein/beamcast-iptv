@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showContextMenu: (name, url) => {
     ipcRenderer.send('show-context-menu', { name, url });
   },
+  onStopPlayback: (callback) => {
+    ipcRenderer.on('stop-playback', () => callback());
+  },
   openInMpv: (streamUrl) => {
     ipcRenderer.send('open-in-mpv', streamUrl);
   },
