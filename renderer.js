@@ -346,11 +346,27 @@ function renderChannelList(list) {
       }
     });
 
-    if (activeChannelName && activeChannelName.textContent === ch.name) {
+    let isLastSelected = false;
+    if (activePlaylistType === 'xtream') {
+      const lastId = localStorage.getItem(`lastSelectedId_${activeTab}`);
+      const chId = activeTab === 'series' ? ch.seriesId : ch.streamId;
+      isLastSelected = lastId && String(chId) === String(lastId);
+    } else {
+      isLastSelected = activeChannelName && activeChannelName.textContent === ch.name;
+    }
+
+    if (isLastSelected) {
       li.classList.add('active');
       setTimeout(() => {
         li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }, 100);
+
+      // Für Serien automatisch die Episoden-Übersicht laden (ohne Wiedergabe)
+      if (activePlaylistType === 'xtream' && activeTab === 'series') {
+        if (seriesTitle.textContent !== ch.name) {
+          loadSeriesEpisodes(ch);
+        }
+      }
     }
 
     channelList.appendChild(li);
@@ -1161,8 +1177,12 @@ async function loadSeriesEpisodes(seriesItem) {
       renderEpisodesGrid(seasonVal);
     };
     
-    // Select first season by default
-    if (seasons.length > 0) {
+    // Select saved or first season by default
+    const savedSeason = localStorage.getItem(`lastSeason_${seriesItem.seriesId}`);
+    if (savedSeason && seasons.includes(savedSeason)) {
+      seasonSelect.value = savedSeason;
+      renderEpisodesGrid(savedSeason);
+    } else if (seasons.length > 0) {
       seasonSelect.value = seasons[0];
       renderEpisodesGrid(seasons[0]);
     } else {
