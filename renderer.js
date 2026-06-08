@@ -53,6 +53,9 @@ const btnCloseModal = document.getElementById('btn-close-modal');
 const accountsList = document.getElementById('accounts-list');
 const accountForm = document.getElementById('account-form');
 const btnSyncXtream = document.getElementById('btn-sync-xtream');
+const accountFormTitle = document.getElementById('account-form-title');
+const btnSaveAccount = document.getElementById('btn-save-account');
+const btnCancelEdit = document.getElementById('btn-cancel-edit');
 
 // State Variables
 let channels = [];
@@ -68,6 +71,7 @@ let isSeeking = false;
 let vodDuration = 0;
 let activeSeriesData = null;
 let streamLoadTimeout = null;
+let editingAccountId = null;
 
 // Preset Channels
 const defaultChannels = [
@@ -695,6 +699,14 @@ function setupTranscodeStatusListener() {
   });
 }
 
+function clearEditState() {
+  editingAccountId = null;
+  accountForm.reset();
+  if (accountFormTitle) accountFormTitle.textContent = 'Add New Account';
+  if (btnSaveAccount) btnSaveAccount.textContent = 'Save Profile';
+  if (btnCancelEdit) btnCancelEdit.style.display = 'none';
+}
+
 // --- Xtream Codes Account Manager Modals & Database logic ---
 
 function setupAccountsModal() {
@@ -705,6 +717,11 @@ function setupAccountsModal() {
 
   btnCloseModal.addEventListener('click', () => {
     accountsModal.style.display = 'none';
+    clearEditState();
+  });
+
+  btnCancelEdit.addEventListener('click', () => {
+    clearEditState();
   });
 
   // Save Account Submit
