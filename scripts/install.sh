@@ -27,28 +27,26 @@ if [ -z "$APPIMAGE_PATH" ] || [ ! -f "$APPIMAGE_PATH" ]; then
     exit 1
   fi
 
-  echo "Ermittle neueste Version von GitHub..."
-  # Neuesten Release-Tag über die API abrufen
-  LATEST_TAG=$(curl -s "https://api.github.com/repos/oliverzein/beamcast-iptv/releases/latest" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+  echo "Ermittle neuestes Release von GitHub..."
+  # Get release JSON
+  RELEASE_JSON=$(curl -s "https://api.github.com/repos/oliverzein/beamcast-iptv/releases/latest")
   
-  # Fallback bei Rate-Limit oder Verbindungsfehlern
-  if [ -z "$LATEST_TAG" ]; then
+  # Extract AppImage download URL
+  URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": "[^"]*' | grep '\.AppImage' | head -n 1 | cut -d'"' -f4)
+
+  if [ -z "$URL" ]; then
+    # Fallback to hardcoded URL if API fails
+    echo "Konnte Download-URL nicht über die API ermitteln. Nutze Fallback..."
     LATEST_TAG="v1.0.0"
-    echo "Konnte neueste Version nicht ermitteln. Nutze Fallback: $LATEST_TAG"
+    OUT_FILE="Beamcast.IPTV-1.0.0.AppImage"
+    URL="https://github.com/oliverzein/beamcast-iptv/releases/download/${LATEST_TAG}/${OUT_FILE}"
   else
-    echo "Neueste Version gefunden: $LATEST_TAG"
+    OUT_FILE=$(basename "$URL")
   fi
 
-  VERSION=${LATEST_TAG#v}
-  OUT_FILE="Beamcast IPTV-${VERSION}.AppImage"
-  URL="https://github.com/oliverzein/beamcast-iptv/releases/download/${LATEST_TAG}/${OUT_FILE}"
-  
   echo "Downloade $OUT_FILE..."
-  # URL enkodieren falls Leerzeichen vorhanden (wir ersetzen Leerzeichen durch %20)
-  ENCODED_URL=$(echo "$URL" | sed 's/ /%20/g')
-
-  if ! curl -# -f -L "$ENCODED_URL" -o "$OUT_FILE"; then
-    echo "Fehler: Download von $ENCODED_URL fehlgeschlagen."
+  if ! curl -# -f -L "$URL" -o "$OUT_FILE"; then
+    echo "Fehler: Download von $URL fehlgeschlagen."
     rm -f "$OUT_FILE"
     exit 1
   fi
