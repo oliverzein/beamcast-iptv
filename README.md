@@ -17,7 +17,16 @@ Beamcast IPTV is a premium, modern, cyberpunk-themed desktop IPTV player built w
 - **FFmpeg** and **FFprobe** (must be available in your system's PATH)
 - **MPV Media Player** (optional, recommended for 4K HEVC content)
 
-## 📦 Installation & Run
+## 📦 Installation & Setup
+
+### Option A: Direct Desktop Installation (Linux One-liner)
+You can install the latest compiled AppImage directly into your application launcher without cloning the repository (uses a static FUSE-free runtime):
+```bash
+curl -sL "https://cdn.jsdelivr.net/gh/oliverzein/beamcast-iptv@main/scripts/install.sh" | bash
+```
+
+### Option B: Local Development Run
+If you want to run the project from source:
 
 1. Clone this repository:
    ```bash
@@ -34,6 +43,13 @@ Beamcast IPTV is a premium, modern, cyberpunk-themed desktop IPTV player built w
    ```bash
    npm start
    ```
+
+### Option C: Build AppImage Locally
+To package the AppImage yourself locally, run:
+```bash
+npm run dist
+```
+For more packaging and release details, see [docs/app_image.md](docs/app_image.md).
 
 ## 📜 License
 
