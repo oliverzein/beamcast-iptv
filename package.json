@@ -4,15 +4,46 @@
   "description": "Beamcast IPTV - Modern Electron IPTV Player with AC3 Transcoding and MPV support",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --linux AppImage"
   },
   "keywords": [],
-  "author": "",
+  "author": "Oliver Zein",
   "license": "ISC",
   "dependencies": {
     "mpegts.js": "^1.8.0"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^26.15.2"
+  },
+  "build": {
+    "appId": "com.beamcast.iptv",
+    "productName": "Beamcast IPTV",
+    "executableName": "beamcast-iptv",
+    "directories": {
+      "output": "dist"
+    },
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "stream_info.html",
+      "style.css",
+      "assets/**/*",
+      "db.js",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "icon": "assets/logo.png"
+    }
   }
 }
