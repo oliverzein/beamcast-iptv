@@ -51,6 +51,24 @@ To run the AppImage:
 
 ---
 
+## Installation & Desktop Integration
+
+An installation script is provided to copy the AppImage to your local binary folder, extract and install the application icon, and register the app in your desktop's application menu.
+
+### Option A: Local Installation (After building locally)
+Run the script from the repository root:
+```bash
+./scripts/install.sh
+```
+
+### Option B: Remote One-liner Installation (Downloads latest GitHub Release)
+Install the latest release directly from GitHub without cloning the repository (via jsDelivr CDN to bypass caching):
+```bash
+curl -sL "https://cdn.jsdelivr.net/gh/oliverzein/beamcast-iptv@main/scripts/install.sh" | bash
+```
+
+---
+
 ## Build Configuration Details
 
 The AppImage packaging settings are configured in the `build` block of `package.json`:
