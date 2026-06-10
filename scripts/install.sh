@@ -37,9 +37,9 @@ if [ -z "$APPIMAGE_PATH" ] || [ ! -f "$APPIMAGE_PATH" ]; then
   if [ -z "$URL" ]; then
     # Fallback to hardcoded URL if API fails
     echo "Konnte Download-URL nicht über die API ermitteln. Nutze Fallback..."
-    LATEST_TAG="v1.0.0"
-    OUT_FILE="Beamcast.IPTV-1.0.0.AppImage"
-    URL="https://github.com/oliverzein/beamcast-iptv/releases/download/${LATEST_TAG}/${OUT_FILE}"
+    LATEST_TAG="v1.0.1"
+    OUT_FILE="Beamcast IPTV-1.0.1.AppImage"
+    URL="https://github.com/oliverzein/beamcast-iptv/releases/download/${LATEST_TAG}/Beamcast%20IPTV-1.0.1.AppImage"
   else
     OUT_FILE=$(basename "$URL")
   fi

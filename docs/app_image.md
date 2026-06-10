@@ -29,7 +29,32 @@ To build the AppImage locally:
    ```
 
 3. **Output Directory:**
-   The packaged binary will be generated in the `dist/` directory as `Beamcast IPTV-1.0.0.AppImage` (size: ~97MB).
+   The packaged binary will be generated in the `dist/` directory as `Beamcast IPTV-1.0.1.AppImage` (size: ~97MB).
+
+---
+
+## Deploying & Releasing
+
+A deployment script is provided to automate local builds and publish releases on GitHub.
+
+1. **Prerequisites:**
+   Ensure the GitHub CLI (`gh`) is installed and authenticated:
+   ```bash
+   gh auth status
+   ```
+
+2. **Run Local Build Check:**
+   Build the AppImage locally without publishing:
+   ```bash
+   ./scripts/deploy.sh
+   ```
+
+3. **Publish to GitHub Releases:**
+   Build the AppImage and publish/upload it to GitHub:
+   ```bash
+   ./scripts/deploy.sh --release
+   ```
+   This automatically reads the version from `package.json`, checks if a GitHub release tag exists, creates it if missing, and uploads the built AppImage asset.
 
 ---
 
@@ -41,12 +66,12 @@ To run the AppImage:
 
 1. Make the binary executable:
    ```bash
-   chmod +x dist/"Beamcast IPTV-1.0.0.AppImage"
+   chmod +x dist/"Beamcast IPTV-1.0.1.AppImage"
    ```
 
 2. Execute it:
    ```bash
-   ./dist/"Beamcast IPTV-1.0.0.AppImage"
+   ./dist/"Beamcast IPTV-1.0.1.AppImage"
    ```
 
 ---
