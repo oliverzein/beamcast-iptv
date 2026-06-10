@@ -82,14 +82,6 @@ body {
   text-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
 }
 
-/* Playlist Manager */
-.playlist-manager {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 
 .input-group {
   display: flex;
@@ -1070,4 +1062,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+#m3u-modal .modal-body {
+  grid-template-columns: 1fr;
 }

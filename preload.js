@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShowAccountsModal: (callback) => {
     ipcRenderer.on('show-accounts-modal', () => callback());
   },
+  onShowM3uModal: (callback) => {
+    ipcRenderer.on('show-m3u-modal', () => callback());
+  },
   onTranscodeStatus: (callback) => {
     ipcRenderer.on('transcode-status', (event, data) => callback(data));
   },

@@ -51,6 +51,14 @@ function createMenu() {
               mainWindow.webContents.send('show-accounts-modal');
             }
           }
+        },
+        {
+          label: 'M3U Playlist...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('show-m3u-modal');
+            }
+          }
         }
       ]
     },
@@ -488,6 +496,15 @@ let streamInfoWindow = null;
 ipcMain.on('set-playback-active', (event, data) => {
   console.log(`Playback active: ${data.name} (${data.url})`);
   activeStream = data;
+  if (activeExternalProcess) {
+    console.log('Killing active external player process because internal playback started');
+    try {
+      activeExternalProcess.kill('SIGKILL');
+    } catch (e) {
+      console.error('Error killing external process:', e);
+    }
+    activeExternalProcess = null;
+  }
 });
 
 ipcMain.on('set-playback-inactive', () => {

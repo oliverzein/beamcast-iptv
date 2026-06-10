@@ -20,20 +20,6 @@
         </div>
       </div>
 
-      <!-- Playlist Source selector -->
-      <div class="playlist-manager">
-        <div class="input-group">
-          <input type="text" id="m3u-url" placeholder="Enter M3U Playlist URL..." value="https://iptv-org.github.io/iptv/categories/news.m3u">
-          <button id="btn-load-url" class="btn btn-primary">Load</button>
-        </div>
-        <div class="file-uploader">
-          <span class="divider">or</span>
-          <label for="m3u-file" class="file-upload-label">
-            <span class="upload-icon">📁</span> Select local M3U file
-          </label>
-          <input type="file" id="m3u-file" accept=".m3u,.m3u8" style="display: none;">
-        </div>
-      </div>
 
       <!-- Xtream Codes Content Tabs (hidden by default) -->
       <div class="sidebar-tabs" id="sidebar-tabs" style="display: none;">
@@ -189,6 +175,34 @@
             <button type="submit" id="btn-save-account" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Save Profile</button>
             <button type="button" id="btn-cancel-edit" class="btn btn-secondary" style="display: none; width: 100%; margin-top: 10px;">Cancel</button>
           </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- M3U Playlist Modal Dialog (hidden by default) -->
+  <div class="modal-overlay" id="m3u-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>M3U Playlist Manager</h2>
+        <button id="btn-close-m3u-modal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="playlist-manager-modal-content" style="width: 100%;">
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label for="m3u-url" style="display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; color: var(--text-muted);">Load Playlist from URL</label>
+            <div class="input-group">
+              <input type="text" id="m3u-url" placeholder="Enter M3U Playlist URL..." value="https://iptv-org.github.io/iptv/categories/news.m3u">
+              <button id="btn-load-url" class="btn btn-primary">Load</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <span class="divider">or</span>
+            <label for="m3u-file" class="file-upload-label">
+              <span class="upload-icon">📁</span> Select local M3U file
+            </label>
+            <input type="file" id="m3u-file" accept=".m3u,.m3u8" style="display: none;">
+          </div>
         </div>
       </div>
     </div>

@@ -57,6 +57,9 @@ const accountFormTitle = document.getElementById('account-form-title');
 const btnSaveAccount = document.getElementById('btn-save-account');
 const btnCancelEdit = document.getElementById('btn-cancel-edit');
 
+const m3uModal = document.getElementById('m3u-modal');
+const btnCloseM3uModal = document.getElementById('btn-close-m3u-modal');
+
 // State Variables
 let channels = [];
 let categories = new Set();
@@ -113,6 +116,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupPlayerControls();
   setupAccountsModal();
+  setupM3uModal();
+  setupGlobalModalDismissal();
   setupTranscodeStatusListener();
   
   // Restore previously loaded provider and stream
@@ -151,12 +156,27 @@ function setupEventListeners() {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
+      reader.onerror = () => {
+        alert("Failed to read the local file.");
+        m3uFileInput.value = '';
+      };
       reader.onload = (event) => {
-        const parsed = parseM3U(event.target.result);
-        if (parsed.length > 0) {
-          loadPresetChannels(parsed);
-        } else {
-          alert("No channels found in this file.");
+        try {
+          const parsed = parseM3U(event.target.result);
+          if (parsed.length > 0) {
+            loadPresetChannels(parsed);
+            localStorage.setItem('lastPlaylistType', 'm3u');
+            localStorage.removeItem('lastM3uUrl');
+            m3uFileInput.value = '';
+            m3uModal.style.display = 'none';
+          } else {
+            alert("No channels found in this file.");
+            m3uFileInput.value = '';
+          }
+        } catch (err) {
+          console.error("Error parsing local M3U file:", err);
+          alert(`Could not parse local file: ${err.message}`);
+          m3uFileInput.value = '';
         }
       };
       reader.readAsText(file);
@@ -192,9 +212,14 @@ function setupEventListeners() {
 }
 
 // Fetch M3U Playlist
-async function fetchPlaylist(url) {
+async function fetchPlaylist(url, isRestore = false) {
+  activePlaylistType = 'm3u';
   statusText.textContent = "Loading playlist...";
   statusDot.className = "pulse-dot orange";
+  if (btnLoadUrl) {
+    btnLoadUrl.disabled = true;
+    btnLoadUrl.textContent = "Loading...";
+  }
   
   try {
     const response = await fetch(url);
@@ -202,23 +227,41 @@ async function fetchPlaylist(url) {
     const text = await response.text();
     const parsed = parseM3U(text);
     if (parsed.length > 0) {
-      loadPresetChannels(parsed);
-      statusText.textContent = "Ready";
-      statusDot.className = "pulse-dot green";
+      // Only apply the playlist if we are restoring state or the modal is still open, AND the playlist type hasn't been switched
+      if (activePlaylistType === 'm3u' && (isRestore || m3uModal.style.display === 'flex')) {
+        loadPresetChannels(parsed);
+        resetStatus(); // This re-enables the load button and sets status to Ready
+        localStorage.setItem('lastPlaylistType', 'm3u');
+        localStorage.setItem('lastM3uUrl', url);
+        m3uModal.style.display = 'none';
+      } else {
+        console.log("[fetchPlaylist] Ignored resolved fetch because active playlist type switched or modal was closed.");
+        if (activePlaylistType === 'm3u') resetStatus();
+      }
     } else {
-      alert("No channels found in the playlist.");
-      resetStatus();
+      if (activePlaylistType === 'm3u' && (isRestore || m3uModal.style.display === 'flex')) {
+        if (!isRestore) alert("No channels found in the playlist.");
+      }
+      if (activePlaylistType === 'm3u') resetStatus();
     }
   } catch (err) {
     console.error("Error fetching playlist:", err);
-    alert(`Could not load playlist: ${err.message}`);
-    resetStatus();
+    if (activePlaylistType === 'm3u') {
+      if (!isRestore) {
+        alert(`Could not load playlist: ${err.message}`);
+      }
+      resetStatus();
+    }
   }
 }
 
 function resetStatus() {
   statusText.textContent = "Ready";
   statusDot.className = "pulse-dot green";
+  if (btnLoadUrl) {
+    btnLoadUrl.disabled = false;
+    btnLoadUrl.textContent = "Load";
+  }
 }
 
 // Parse M3U playlist content
@@ -863,6 +906,44 @@ function setupAccountsModal() {
   });
 }
 
+function setupM3uModal() {
+  window.electronAPI.onShowM3uModal(() => {
+    m3uModal.style.display = 'flex';
+  });
+
+  btnCloseM3uModal.addEventListener('click', () => {
+    m3uModal.style.display = 'none';
+  });
+
+  m3uUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      btnLoadUrl.click();
+    }
+  });
+}
+
+function setupGlobalModalDismissal() {
+  // Close modals when clicking outside the card (on the overlay)
+  window.addEventListener('click', (e) => {
+    if (e.target === m3uModal) {
+      m3uModal.style.display = 'none';
+    }
+    if (e.target === accountsModal) {
+      accountsModal.style.display = 'none';
+      if (typeof clearEditState === 'function') clearEditState();
+    }
+  });
+
+  // Close modals on Escape key press
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      m3uModal.style.display = 'none';
+      accountsModal.style.display = 'none';
+      if (typeof clearEditState === 'function') clearEditState();
+    }
+  });
+}
+
 function showAccountsModal() {
   accountsModal.style.display = 'flex';
   loadAccountsList();
@@ -1312,7 +1393,7 @@ async function restoreLastState() {
     if (lastM3uUrl) {
       console.log(`[State Restore] Restoring M3U playlist: ${lastM3uUrl}`);
       activePlaylistType = 'm3u';
-      await fetchPlaylist(lastM3uUrl);
+      await fetchPlaylist(lastM3uUrl, true);
       
       restoreLastStream('M3U');
     } else {
