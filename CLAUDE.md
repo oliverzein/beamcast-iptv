@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+> [!IMPORTANT]
+> **Orientation:** Read [docs/app_state.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/docs/app_state.md) first to understand architecture, flows, codebase structure, and dependencies before writing code.
+
 Guidelines for development and deployment in this project.
 
 ## Build & Test Commands
