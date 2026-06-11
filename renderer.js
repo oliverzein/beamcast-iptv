@@ -847,6 +847,9 @@ function setupTranscodeStatusListener() {
     destroyPlayer();
     videoContainer.style.display = 'none';
     timelineContainer.style.display = 'none';
+    if (appContainer && appContainer.classList.contains('player-only')) {
+      appContainer.classList.remove('player-only');
+    }
   });
 }
 
