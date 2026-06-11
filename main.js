@@ -201,6 +201,84 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
 }
 
+// Build the arguments for the FFmpeg process
+function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHEVC) {
+  const ffmpegArgs = ['-loglevel', 'warning'];
+  
+  // Add network stream optimization parameters BEFORE -i
+  ffmpegArgs.push(
+    '-timeout', '5000000',          // 5 seconds connection timeout
+    '-reconnect', '1',              // Reconnect on disconnect
+    '-reconnect_at_eof', '1',       // Reconnect at EOF
+    '-reconnect_streamed', '1',     // Reconnect streamed data
+    '-reconnect_delay_max', '5'     // Max delay before reconnecting (5s)
+  );
+
+  if (isLive) {
+    ffmpegArgs.push(
+      '-probesize', '1000000',        // Limit probe size to 1MB for instant start on live TV
+      '-analyzeduration', '1000000'   // Limit analyze duration to 1s for instant start on live TV
+    );
+  } else {
+    // For VOD, use larger values to correctly probe Matroska/MKV with multiple tracks/subtitles
+    ffmpegArgs.push(
+      '-probesize', '15000000',       // 15MB probesize for VOD
+      '-analyzeduration', '5000000'   // 5s analyzeduration for VOD
+    );
+  }
+
+  if (start) {
+    ffmpegArgs.push('-ss', start.toString()); // Seek input (must be before -i)
+  }
+  ffmpegArgs.push(
+    '-i', targetStreamUrl,
+    '-map', '0:v?',          // Map first video stream optionally
+    '-map', '0:a?',          // Map first audio stream optionally
+    '-sn',                   // Disable subtitle streams to prevent parsing failures
+    '-dn'                    // Disable data streams
+  );
+
+  // Check if video needs transcoding
+  const unsupportedCodecs = ['hevc', 'h265', 'mpeg2video', 'vc1', 'mpeg4', 'msmpeg4v3', 'wmv3'];
+  let needTranscoding = unsupportedCodecs.includes(codec.toLowerCase());
+  
+  // If codec detection failed but it's an MKV file on VOD, default to H.264 transcode for safety
+  if (codec === 'unknown' && !isLive && targetStreamUrl.toLowerCase().split('?')[0].endsWith('.mkv')) {
+    console.warn(`[Proxy] Codec detection failed on VOD MKV stream, defaulting to H.264 transcode for safety.`);
+    needTranscoding = true;
+  }
+
+  // If client supports HEVC natively, we don't need to transcode it
+  if (needTranscoding && (codec.toLowerCase() === 'hevc' || codec.toLowerCase() === 'h265') && clientSupportsHEVC) {
+    console.log('[Proxy] Client supports HEVC natively, bypassing transcoding and using copy mode.');
+    needTranscoding = false;
+  }
+
+  if (needTranscoding) {
+    console.log(`Transcoding video from ${codec} to h264`);
+    ffmpegArgs.push(
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '26',
+      '-tune', 'zerolatency',
+      '-pix_fmt', 'yuv420p'  // Force browser-friendly pixel format
+    );
+  } else {
+    console.log(`Copying video stream (codec: ${codec})`);
+    ffmpegArgs.push('-c:v', 'copy');
+  }
+
+  ffmpegArgs.push(
+    '-c:a', 'aac',           // Transcode audio to AAC
+    '-b:a', '192k',          // Audio bitrate
+    '-ac', '2',              // Downmix to stereo
+    '-f', 'mpegts',          // MPEG-TS container
+    'pipe:1'                 // Output to stdout
+  );
+
+  return { ffmpegArgs, needTranscoding };
+}
+
 // Handle transcoder / stream requests
 function handleStreamRequest(req, res, reqUrl) {
   const targetStreamUrl = reqUrl.query.url;
@@ -239,72 +317,8 @@ function handleStreamRequest(req, res, reqUrl) {
 
     console.log(`Transcoding stream (${codec}): ${targetStreamUrl}${start ? ` starting at ${start}s` : ''}`);
 
-    // Build FFmpeg arguments
-    const ffmpegArgs = ['-loglevel', 'warning'];
-    
-    // Add network stream optimization parameters BEFORE -i
-    ffmpegArgs.push(
-      '-timeout', '5000000',          // 5 seconds connection timeout
-      '-reconnect', '1',              // Reconnect on disconnect
-      '-reconnect_at_eof', '1',       // Reconnect at EOF
-      '-reconnect_streamed', '1',     // Reconnect streamed data
-      '-reconnect_delay_max', '5'     // Max delay before reconnecting (5s)
-    );
-
-    if (isLive) {
-      ffmpegArgs.push(
-        '-probesize', '1000000',        // Limit probe size to 1MB for instant start on live TV
-        '-analyzeduration', '1000000'   // Limit analyze duration to 1s for instant start on live TV
-      );
-    } else {
-      // For VOD, use larger values to correctly probe Matroska/MKV with multiple tracks/subtitles
-      ffmpegArgs.push(
-        '-probesize', '15000000',       // 15MB probesize for VOD
-        '-analyzeduration', '5000000'   // 5s analyzeduration for VOD
-      );
-    }
-
-    if (start) {
-      ffmpegArgs.push('-ss', start); // Seek input (must be before -i)
-    }
-    ffmpegArgs.push(
-      '-i', targetStreamUrl,
-      '-map', '0:v?',          // Map first video stream optionally
-      '-map', '0:a?',          // Map first audio stream optionally
-      '-sn',                   // Disable subtitle streams to prevent parsing failures
-      '-dn'                    // Disable data streams
-    );
-
-    // Check if video needs transcoding
-    const unsupportedCodecs = ['hevc', 'h265', 'mpeg2video', 'vc1', 'mpeg4', 'msmpeg4v3', 'wmv3'];
-    let needTranscoding = unsupportedCodecs.includes(codec.toLowerCase());
-    
-    // If codec detection failed but it's an MKV file on VOD, default to H.264 transcode for safety
-    if (codec === 'unknown' && !isLive && targetStreamUrl.toLowerCase().split('?')[0].endsWith('.mkv')) {
-      console.warn(`[Proxy] Codec detection failed on VOD MKV stream, defaulting to H.264 transcode for safety.`);
-      needTranscoding = true;
-    }
-
-    // If client supports HEVC natively, we don't need to transcode it
     const clientSupportsHEVC = reqUrl.query.hevc === 'true';
-    if (needTranscoding && (codec.toLowerCase() === 'hevc' || codec.toLowerCase() === 'h265') && clientSupportsHEVC) {
-      console.log('[Proxy] Client supports HEVC natively, bypassing transcoding and using copy mode.');
-      needTranscoding = false;
-    }
-
-    if (needTranscoding) {
-      console.log(`Transcoding video from ${codec} to h264`);
-      ffmpegArgs.push(
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-crf', '26',
-        '-tune', 'zerolatency',
-        '-pix_fmt', 'yuv420p'  // Force browser-friendly pixel format
-      );
-    } else {
-      console.log(`Copying video stream (codec: ${codec})`);
-      ffmpegArgs.push('-c:v', 'copy');
-    }
+    const { ffmpegArgs, needTranscoding } = buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHEVC);
 
     // Send transcode status back to the renderer process
     if (mainWindow) {
@@ -315,14 +329,6 @@ function handleStreamRequest(req, res, reqUrl) {
         duration: duration
       });
     }
-
-    ffmpegArgs.push(
-      '-c:a', 'aac',           // Transcode audio to AAC
-      '-b:a', '192k',          // Audio bitrate
-      '-ac', '2',              // Downmix to stereo
-      '-f', 'mpegts',          // MPEG-TS container
-      'pipe:1'                 // Output to stdout
-    );
 
     console.log(`[FFmpeg Command] ffmpeg ${ffmpegArgs.join(' ')}`);
     // Spawn FFmpeg

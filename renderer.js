@@ -77,6 +77,7 @@ let vodDuration = 0;
 let activeSeriesData = null;
 let streamLoadTimeout = null;
 let editingAccountId = null;
+let controlsTimeout = null;
 
 // Preset Channels
 const defaultChannels = [
@@ -671,6 +672,14 @@ function stopPlayback() {
 
 // Custom Player Controls
 function setupPlayerControls() {
+  setupBasicPlaybackControls();
+  setupViewModeToggles();
+  setupExternalMpvPlayer();
+  setupTimelineSeeking();
+  setupControlAutohide();
+}
+
+function setupBasicPlaybackControls() {
   btnCloseError.addEventListener('click', () => {
     playbackErrorOverlay.style.display = 'none';
   });
@@ -697,7 +706,9 @@ function setupPlayerControls() {
     videoPlayer.volume = e.target.value;
     ctrlMute.textContent = videoPlayer.volume === 0 ? "🔇" : "🔊";
   });
+}
 
+function setupViewModeToggles() {
   ctrlFullscreen.addEventListener('click', () => {
     if (!document.fullscreenElement) {
       videoPlayer.requestFullscreen().catch(err => {
@@ -713,7 +724,9 @@ function setupPlayerControls() {
       appContainer.classList.toggle('player-only');
     });
   }
+}
 
+function setupExternalMpvPlayer() {
   if (ctrlMpv) {
     ctrlMpv.addEventListener('click', () => {
       if (!activeStreamUrl) return;
@@ -726,7 +739,9 @@ function setupPlayerControls() {
       }
     });
   }
+}
 
+function setupTimelineSeeking() {
   // Timeline seeking for VOD
   videoPlayer.addEventListener('durationchange', () => {
     if (activePlaylistType === 'xtream' && activeTab !== 'live') {
@@ -768,6 +783,30 @@ function setupPlayerControls() {
     const seekProxyUrl = window.electronAPI.getProxySeekUrl(activeStreamUrl, targetSeconds, supportsHEVC);
     loadStream(seekProxyUrl);
   });
+}
+
+function setupControlAutohide() {
+  // Control bar auto-hide logic (based strictly on inactivity)
+  if (videoContainer) {
+    const showControls = () => {
+      videoContainer.classList.add('show-controls');
+      clearTimeout(controlsTimeout);
+      controlsTimeout = setTimeout(hideControls, 3000);
+    };
+
+    const hideControls = () => {
+      videoContainer.classList.remove('show-controls');
+    };
+
+    videoContainer.addEventListener('mousemove', showControls);
+    videoContainer.addEventListener('mouseenter', showControls);
+    window.addEventListener('blur', hideControls);
+    
+    if (videoPlayer) {
+      videoPlayer.addEventListener('play', () => showControls());
+      videoPlayer.addEventListener('pause', () => showControls());
+    }
+  }
 }
 
 function formatTime(seconds) {
