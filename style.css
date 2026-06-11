@@ -1067,3 +1067,32 @@ input[type="range"]::-webkit-slider-thumb:hover {
 #m3u-modal .modal-body {
   grid-template-columns: 1fr;
 }
+
+/* Player-only Mode */
+.app-container.player-only {
+  grid-template-columns: 1fr;
+}
+
+.app-container.player-only .sidebar {
+  display: none;
+}
+
+.app-container.player-only .main-content {
+  grid-template-rows: 1fr;
+}
+
+.app-container.player-only .top-bar {
+  display: none;
+}
+
+.app-container.player-only .player-frame {
+  padding: 0;
+  background: #000;
+}
+
+.app-container.player-only .video-container {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+

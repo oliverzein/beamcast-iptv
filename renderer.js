@@ -28,6 +28,8 @@ const ctrlMute = document.getElementById('ctrl-mute');
 const ctrlVolume = document.getElementById('ctrl-volume');
 const ctrlFullscreen = document.getElementById('ctrl-fullscreen');
 const ctrlMpv = document.getElementById('ctrl-mpv');
+const ctrlPlayerOnly = document.getElementById('ctrl-player-only');
+const appContainer = document.querySelector('.app-container');
 
 // Check if browser/Chromium has native HEVC hardware decoding enabled
 const supportsHEVC = document.createElement('video').canPlayType('video/mp4; codecs="hvc1.1.1.L120.B0"') !== '';
@@ -706,6 +708,12 @@ function setupPlayerControls() {
     }
   });
 
+  if (ctrlPlayerOnly && appContainer) {
+    ctrlPlayerOnly.addEventListener('click', () => {
+      appContainer.classList.toggle('player-only');
+    });
+  }
+
   if (ctrlMpv) {
     ctrlMpv.addEventListener('click', () => {
       if (!activeStreamUrl) return;
@@ -937,9 +945,16 @@ function setupGlobalModalDismissal() {
   // Close modals on Escape key press
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      m3uModal.style.display = 'none';
-      accountsModal.style.display = 'none';
-      if (typeof clearEditState === 'function') clearEditState();
+      if (m3uModal.style.display === 'flex' || accountsModal.style.display === 'flex') {
+        m3uModal.style.display = 'none';
+        accountsModal.style.display = 'none';
+        if (typeof clearEditState === 'function') clearEditState();
+        return;
+      }
+      if (appContainer && appContainer.classList.contains('player-only')) {
+        appContainer.classList.remove('player-only');
+        return;
+      }
     }
   });
 }
