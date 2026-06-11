@@ -10,10 +10,10 @@ The application is built on **Electron** and solves the **AC3/E-AC3 audio codec 
 
 ```mermaid
 graph TD
-    A[Renderer: index.html + mpegts.js] -- HTTP GET Stream --> B[Main Process: HTTP Server]
+    A[Renderer: index.html + mpegts.js] -- HTTP GET Stream + HEVC capability --> B[Main Process: HTTP Server]
     B -- Spawn subprocess --> C[FFmpeg]
     C -- Read live stream --> D[IPTV Provider HLS/MPEG-TS]
-    C -- Audio: Transcode to AAC / Video: Copy --> B
+    C -- Audio: Transcode to AAC / Video: Copy or Transcode --> B
     B -- Stream chunks --> A
 ```
 
@@ -21,22 +21,21 @@ graph TD
 
 1. **Local Transcoding HTTP Server (Main Process):**
    - Runs on `http://127.0.0.1:18080`.
-   - Listens to incoming requests at `/stream?url=<IPTV_STREAM_URL>`.
+   - Endpoint: `/stream?url=<IPTV_STREAM_URL>&start=<SEEK_SECONDS>&hevc=<true|false>`.
    - Spawns a dedicated `ffmpeg` subprocess for each active stream.
-   - Restructures headers to include **Private Network Access (PNA)** and **CORS** rules.
-   - Cleans up and kills previous FFmpeg subprocesses instantly on channel switches or client disconnections to conserve system resources.
+   - Cleans up and kills previous FFmpeg subprocesses instantly on channel switches or client disconnections.
+   - Writes CORS and Private Network Access (PNA) headers.
 
-2. **FFmpeg Pipeline:**
-   - Command: `ffmpeg -loglevel warning -i <STREAM_URL> -c:v copy -c:a aac -b:a 192k -ac 2 -f mpegts pipe:1`.
-   - **Video:** Passed through directly (`-c:v copy`) requiring near-zero CPU.
-   - **Audio:** Transcoded from any source format (including AC-3, E-AC-3, MP3) to standard AAC stereo (`-c:a aac -b:a 192k -ac 2`) to ensure compatibility with Chromium.
-   - **Output Format:** Wrapped in a standard MPEG-TS stream container (`-f mpegts`) and piped to the local HTTP response.
+2. **FFmpeg Pipeline & Args (`buildFfmpegArgs`):**
+   - Video transcoding: If video codec is unsupported (`hevc`, `h265`, `mpeg2video`, `vc1`, etc.), transcodes to H.264 (`-c:v libx264`). If client supports HEVC natively (`hevc=true` query param detected via browser support check) or video is already compatible, uses copy mode (`-c:v copy`) to save CPU.
+   - Audio: Transcoded to AAC stereo (`-c:a aac -b:a 192k -ac 2`) to ensure Chromium compatibility.
+   - Stream optimizations: Applies connection timeouts, reconnect parameters, and disables subtitles/data streams.
 
-3. **MPEG-TS Client Demuxer (Renderer Process):**
-   - Utilizes [mpegts.js](https://github.com/xqq/mpegts.js) in the renderer.
-   - Receives the transcoded MPEG-TS stream over HTTP from the local proxy server.
-   - Demuxes the MPEG-TS container into fragmented MP4 (fMP4) chunks in JavaScript on-the-fly.
-   - Feeds the fMP4 chunks directly into the standard HTML5 `<video>` element via the browser's **Media Source Extensions (MSE)**.
+3. **MPEG-TS Client Demuxer & Player (Renderer Process):**
+   - Utilizes `mpegts.js` to demux transcoded stream to fragmented MP4 (fMP4) on-the-fly and feeds it to HTML5 `<video>` via Media Source Extensions (MSE).
+   - Toggles **Player-Only (TV) View** (removes sidebar/topbar) via dedicated button or Escape key.
+   - Autohides controls after 3 seconds of user inactivity with a translucent blur overlay.
+   - Switches back to normal mode automatically when switching to the external player (MPV) or stopping playback.
 
 ---
 
@@ -44,31 +43,38 @@ graph TD
 
 All active files are placed in the project root: `/home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/`
 
-- **[docs/implementation_plan.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/docs/implementation_plan.md)**: Original step-by-step implementation strategy.
-- **[docs/app_state.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/docs/app_state.md)**: This document (Active application overview).
-- **[package.json](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/package.json)**: Node.js project manifest. Lists `electron` (devDependencies) and `mpegts.js` (dependencies).
-- **[main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js)**: Main process. Configures Electron `BrowserWindow`, sets up the HTTP proxy, spawns and cleans up FFmpeg, and forwards renderer console logs to terminal output for debugging.
-- **[preload.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/preload.js)**: Safe IPC gateway. Exposes `window.electronAPI.getProxyUrl(url)` to the renderer context.
-- **[index.html](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/index.html)**: Front-end structure. Contains the sidebar layout, playlist loader (URL / file), search controls, category filters, and custom player overlays.
-- **[style.css](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/style.css)**: Neon-cyberpunk glassmorphic stylesheet.
-  - Implements `scrollbar-gutter: stable` to avoid layout shift when scrollbars appear.
-  - Fixes layout skewing by targeting transitions specifically (`background-color, border-color, transform, box-shadow`) instead of `all`.
-  - Implements a `-webkit-line-clamp: 2` multi-line wrap for long channel names with `min-height: 60px` card frames.
-- **[renderer.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/renderer.js)**: Renderer process logic. Parses M3U playlist entries, updates filters and categories, manages card click handlers, and controls player playback/volume/fullscreen states.
-- **[assets/placeholder.png](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/assets/placeholder.png)**: Futuristic neon purple/cyan media poster image.
+### Documentation & Configs
+- **[CLAUDE.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/CLAUDE.md)**: Project-specific guidelines, build commands, and workflows.
+- **[.fallowrc.json](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/.fallowrc.json)**: Configuration for Fallow static analysis to eliminate false positive dead code warnings.
+- **[docs/app_state.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/docs/app_state.md)**: This document.
+- **[docs/app_image.md](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/docs/app_image.md)**: Linux AppImage build and usage instructions.
+
+### Codebase
+- **[package.json](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/package.json)**: Manifest listing dependencies (Electron, mpegts.js) and build settings.
+- **[main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js)**: Main process. Configures BrowserWindow, spawns local proxy, dynamically constructs FFmpeg arguments via `buildFfmpegArgs`, and forwards renderer console logs.
+- **[preload.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/preload.js)**: Safe IPC bridge exposing proxy URL and MPV launch APIs to renderer.
+- **[db.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/db.js)**: IndexedDB helper caching Xtream Codes accounts, categories, and streams.
+- **[index.html](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/index.html)**: UI markup (sidebar layout, category filters, overlays, controls).
+- **[stream_info.html](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/stream_info.html)**: Metadata viewer window showing stream/codec specs.
+- **[style.css](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/style.css)**: Neon-cyberpunk stylesheet. Handles grid layout, transition optimizations, multi-line clamps, and TV Mode CSS.
+- **[renderer.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/renderer.js)**: Client-side logic. Parses playlists, updates filters, detects native HEVC support, and handles custom player controls (decomposed into playback, mode toggles, external player, seeking, and autohide).
+
+### Scripts & Assets
+- **[scripts/deploy.sh](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/scripts/deploy.sh)**: Packaging and release script leveraging Electron Builder and GitHub CLI (`gh`).
+- **[scripts/install.sh](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/scripts/install.sh)**: Script to copy built AppImage, install icons, and register local desktop shortcuts.
+- **[assets/placeholder.png](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/assets/placeholder.png)**: Visual placeholder fallback for channel cards/logo.
 
 ---
 
-## 🚀 Running the Application
-
-Ensure Node.js and system `ffmpeg` are installed. Run from the project root:
+## 🚀 Running & Building
 
 ```bash
+# Start in dev mode
 npm start
+
+# Build AppImage locally
+npm run dist
+
+# Deploy/Publish release
+./scripts/deploy.sh --release
 ```
-
-### Testing Playlist
-
-A preset channel playlist is configured by default (Al Jazeera English, NHK World, ABC News, TRT World).
-You can load custom playlists by drag-and-drop or entering local paths, e.g., the user-specific playlist:
-`[celluloidTV.m3u](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/Playlists/celluloidTV.m3u)`
