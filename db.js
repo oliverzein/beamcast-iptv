@@ -170,6 +170,11 @@ const IPTVDb = {
         if (storeName === 'live_streams') {
           record.streamId = streamId;
           record.streamType = item.stream_type;
+          const isArchiveTrue = item.tv_archive && item.tv_archive !== 0 && item.tv_archive !== '0' && item.tv_archive !== false;
+          const isCatchupTrue = item.catchup && item.catchup !== 0 && item.catchup !== '0' && item.catchup !== false;
+          const hasCatchup = isArchiveTrue || isCatchupTrue;
+          record.catchup = hasCatchup ? 1 : 0;
+          record.catchupDays = parseInt(item.tv_archive_duration || item.catchup_days) || 0;
         } else if (storeName === 'vod_streams') {
           record.streamId = streamId;
           record.containerExtension = item.container_extension;

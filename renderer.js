@@ -48,6 +48,20 @@ const seriesCover = document.getElementById('series-cover');
 const seriesTitle = document.getElementById('series-title');
 const seriesPlot = document.getElementById('series-plot');
 const seasonSelect = document.getElementById('season-select');
+
+// EPG and Timeshift variables
+let isTimeshiftActive = false;
+let timeshiftProgramInfo = null;
+let currentLiveChannelUrl = null;
+let currentLiveChannelName = null;
+let currentLiveChannelGroup = null;
+let currentLiveChannelLogo = null;
+let currentEpgListings = [];
+let currentLiveChannelId = null;
+
+const liveEpgContainer = document.getElementById('live-epg-container');
+const epgList = document.getElementById('epg-list');
+const ctrlBackToLive = document.getElementById('ctrl-back-to-live');
 const episodesGrid = document.getElementById('episodes-grid');
 
 const accountsModal = document.getElementById('accounts-modal');
@@ -76,6 +90,7 @@ let isSeeking = false;
 let vodDuration = 0;
 let activeSeriesData = null;
 let streamLoadTimeout = null;
+let seekDebounceTimeout = null;
 let editingAccountId = null;
 let controlsTimeout = null;
 
@@ -358,6 +373,14 @@ function renderChannelList(list) {
     li.appendChild(img);
     li.appendChild(info);
 
+    if (activePlaylistType === 'xtream' && activeTab === 'live' && ch.catchup === 1) {
+      const catchupIndicator = document.createElement('span');
+      catchupIndicator.className = 'channel-catchup-indicator';
+      catchupIndicator.textContent = '🕒';
+      catchupIndicator.title = 'Timeshift / Catch-up verfügbar';
+      li.appendChild(catchupIndicator);
+    }
+
     li.addEventListener('click', () => {
       const activeLi = channelList.querySelector('li.active');
       if (activeLi) activeLi.classList.remove('active');
@@ -469,6 +492,12 @@ function playChannel(name, group, logo, streamUrl) {
   activeStreamUrl = streamUrl;
   seekOffset = 0;
   vodDuration = 0;
+
+  if (isTimeshiftActive && timeshiftProgramInfo) {
+    const start = Number(timeshiftProgramInfo.start_timestamp);
+    const end = Number(timeshiftProgramInfo.stop_timestamp || timeshiftProgramInfo.end_timestamp);
+    vodDuration = Math.floor(end - start) || 3600;
+  }
   
   // Notify main process of active stream
   window.electronAPI.setPlaybackActive(name, streamUrl);
@@ -483,12 +512,17 @@ function playChannel(name, group, logo, streamUrl) {
   localStorage.setItem('lastStreamGroup', group || '');
   localStorage.setItem('lastStreamLogo', logo || '');
 
-  // Display Seek timeline only for VOD / Movies / Series Episodes (Xtream Mode)
-  if (activePlaylistType === 'xtream' && activeTab !== 'live') {
+  // Display Seek timeline only for VOD / Movies / Series Episodes (Xtream Mode) or active Live Timeshift
+  if ((activePlaylistType === 'xtream' && activeTab !== 'live') || isTimeshiftActive) {
     timelineContainer.style.display = 'flex';
     seekBar.value = 0;
     timeCurrent.textContent = '00:00:00';
-    timeDuration.textContent = '00:00:00';
+    if (isTimeshiftActive && vodDuration) {
+      seekBar.max = vodDuration;
+      timeDuration.textContent = formatTime(vodDuration);
+    } else {
+      timeDuration.textContent = '00:00:00';
+    }
   } else {
     timelineContainer.style.display = 'none';
   }
@@ -499,15 +533,19 @@ function playChannel(name, group, logo, streamUrl) {
 
 function loadStream(proxyUrl) {
   if (mpegts.getFeatureList().mseLivePlayback) {
-    const isLiveStream = activePlaylistType === 'm3u' || activeTab === 'live';
+    const isRealLiveStream = (activePlaylistType === 'm3u' || activeTab === 'live') && !isTimeshiftActive;
+    const isLiveStream = isRealLiveStream || isTimeshiftActive;
     mpegtsPlayer = mpegts.createPlayer({
       type: 'mpegts',
       isLive: isLiveStream,
       url: proxyUrl,
       enableWorker: true,
       enableStashBuffer: !isLiveStream,           // Disable stash buffer for live streams to minimize startup delay
-      liveBufferLatencyChasing: isLiveStream,     // Chase buffer latency to keep playback realtime
-      liveSync: isLiveStream                      // Chase latency by adjusting playback speed if needed
+      liveBufferLatencyChasing: isRealLiveStream, // Chase buffer latency only for real live streams (not timeshift archives)
+      liveSync: isRealLiveStream,                 // Latency chasing on timeshift causes constant jumps/stutter
+      autoCleanupSourceBuffer: isTimeshiftActive, // Prevent MSE buffer overflow on long timeshift programs
+      autoCleanupMaxBackwardDuration: 60,
+      autoCleanupMinBackwardDuration: 30
     });
 
     // Set a timeout of 15 seconds for decoding to complete.
@@ -577,6 +615,58 @@ function loadStream(proxyUrl) {
       // Don't show full loading overlay for transient buffering
       statusText.textContent = "Buffering...";
       statusDot.className = "pulse-dot orange";
+    };
+
+    videoPlayer.onended = () => {
+      console.log("Stream playback ended.");
+      if (isTimeshiftActive) {
+        // Try to find the next program in the EPG listings to continue playing seamlessly
+        const currentIndex = currentEpgListings.findIndex(listing => 
+          Number(listing.start_timestamp) === Number(timeshiftProgramInfo.start_timestamp)
+        );
+        
+        if (currentIndex !== -1 && currentIndex + 1 < currentEpgListings.length) {
+          const nextListing = currentEpgListings[currentIndex + 1];
+          const now = Math.floor(Date.now() / 1000);
+          const startTimestamp = Number(nextListing.start_timestamp);
+          const endTimestamp = Number(nextListing.stop_timestamp || nextListing.end_timestamp);
+          
+          if (startTimestamp < now) {
+            if (endTimestamp <= now) {
+              // The next program is also a completed archive program, play it!
+              console.log("Timeshift program finished. Auto-playing next program:", nextListing.title);
+              
+              // Highlight the next program in the EPG sidebar list
+              if (epgList) {
+                const activeItems = epgList.querySelectorAll('.epg-item.playing');
+                activeItems.forEach(el => el.classList.remove('playing'));
+                
+                const items = epgList.querySelectorAll('.epg-item');
+                if (items && items[currentIndex + 1]) {
+                  items[currentIndex + 1].classList.add('playing');
+                }
+              }
+              
+              playTimeshift(nextListing, currentLiveChannelId);
+              return;
+            } else {
+              // The next program is currently running live, return to live!
+              console.log("Timeshift program finished. Next program is currently Live. Returning to Live.");
+            }
+          } else {
+            console.log("Timeshift program finished. Next program is in the future. Returning to Live.");
+          }
+        }
+        
+        // Fallback: Return to live stream
+        if (ctrlBackToLive) {
+          ctrlBackToLive.click();
+        }
+      } else {
+        statusText.textContent = "Ended";
+        statusDot.className = "pulse-dot orange";
+        ctrlPlay.textContent = "▶";
+      }
     };
 
     videoPlayer.onerror = (e) => {
@@ -706,6 +796,27 @@ function setupBasicPlaybackControls() {
     videoPlayer.volume = e.target.value;
     ctrlMute.textContent = videoPlayer.volume === 0 ? "🔇" : "🔊";
   });
+
+  if (ctrlBackToLive) {
+    ctrlBackToLive.addEventListener('click', () => {
+      isTimeshiftActive = false;
+      ctrlBackToLive.style.display = 'none';
+      
+      const streamInfo = document.getElementById('stream-info');
+      if (streamInfo) {
+        streamInfo.textContent = 'LIVE';
+        streamInfo.style.background = 'red';
+        streamInfo.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.4)';
+      }
+      
+      if (epgList) {
+        const activeItems = epgList.querySelectorAll('.epg-item.playing');
+        activeItems.forEach(el => el.classList.remove('playing'));
+      }
+      
+      playChannel(currentLiveChannelName, currentLiveChannelGroup, currentLiveChannelLogo, currentLiveChannelUrl);
+    });
+  }
 }
 
 function setupViewModeToggles() {
@@ -744,7 +855,7 @@ function setupExternalMpvPlayer() {
 function setupTimelineSeeking() {
   // Timeline seeking for VOD
   videoPlayer.addEventListener('durationchange', () => {
-    if (activePlaylistType === 'xtream' && activeTab !== 'live') {
+    if ((activePlaylistType === 'xtream' && activeTab !== 'live') || isTimeshiftActive) {
       const playerDuration = videoPlayer.duration;
       if (playerDuration && isFinite(playerDuration) && playerDuration > 0) {
         if (!vodDuration || playerDuration > vodDuration) {
@@ -757,7 +868,7 @@ function setupTimelineSeeking() {
   });
 
   videoPlayer.addEventListener('timeupdate', () => {
-    if (activePlaylistType === 'xtream' && activeTab !== 'live') {
+    if ((activePlaylistType === 'xtream' && activeTab !== 'live') || isTimeshiftActive) {
       const displayTime = seekOffset + videoPlayer.currentTime;
       timeCurrent.textContent = formatTime(displayTime);
       if (!isSeeking) {
@@ -773,15 +884,22 @@ function setupTimelineSeeking() {
   seekBar.addEventListener('change', () => {
     isSeeking = false;
     const targetSeconds = Math.floor(Number(seekBar.value));
-    seekOffset = targetSeconds;
-    
-    destroyPlayer();
-    
-    loaderOverlay.classList.add('active');
-    loaderText.textContent = `Seeking to ${formatTime(targetSeconds)}...`;
-    
-    const seekProxyUrl = window.electronAPI.getProxySeekUrl(activeStreamUrl, targetSeconds, supportsHEVC);
-    loadStream(seekProxyUrl);
+
+    if (seekDebounceTimeout) {
+      clearTimeout(seekDebounceTimeout);
+    }
+    seekDebounceTimeout = setTimeout(() => {
+      seekDebounceTimeout = null;
+      seekOffset = targetSeconds;
+
+      destroyPlayer();
+
+      loaderOverlay.classList.add('active');
+      loaderText.textContent = `Seeking to ${formatTime(targetSeconds)}...`;
+
+      const seekProxyUrl = window.electronAPI.getProxySeekUrl(activeStreamUrl, targetSeconds, supportsHEVC);
+      loadStream(seekProxyUrl);
+    }, 300);
   });
 }
 
@@ -1261,13 +1379,37 @@ function handleXtreamClick(item) {
   if (activeTab === 'live') {
     localStorage.setItem('lastSelectedId_live', item.streamId);
     const url = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${item.streamId}.ts`;
+    
+    currentLiveChannelUrl = url;
+    currentLiveChannelName = item.name;
+    currentLiveChannelGroup = item.group || 'Live Channel';
+    currentLiveChannelLogo = item.logo;
+    isTimeshiftActive = false;
+    
+    if (ctrlBackToLive) {
+      ctrlBackToLive.style.display = 'none';
+    }
+    
+    const streamInfo = document.getElementById('stream-info');
+    if (streamInfo) {
+      streamInfo.textContent = 'LIVE';
+      streamInfo.style.background = 'red';
+      streamInfo.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.4)';
+    }
+
     playChannel(item.name, 'Live Channel', item.logo, url);
+    
+    loadEpgSidebar(item.streamId, item.catchup === 1);
   } else if (activeTab === 'vod') {
     localStorage.setItem('lastSelectedId_vod', item.streamId);
+    if (liveEpgContainer) liveEpgContainer.style.display = 'none';
+    isTimeshiftActive = false;
     const ext = item.containerExtension || 'mp4';
     const url = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${item.streamId}.${ext}`;
     playChannel(item.name, 'Movie', item.logo, url);
   } else if (activeTab === 'series') {
+    if (liveEpgContainer) liveEpgContainer.style.display = 'none';
+    isTimeshiftActive = false;
     loadSeriesEpisodes(item);
   }
 }
@@ -1459,4 +1601,192 @@ async function restoreLastState() {
   } else {
     loadPresetChannels(defaultChannels);
   }
+}
+
+// --- EPG & Timeshift helpers ---
+
+function safeBase64Decode(str) {
+  if (!str) return "";
+  try {
+    return decodeURIComponent(escape(atob(str)));
+  } catch (e) {
+    return str;
+  }
+}
+
+function formatTimeshiftDate(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}:${hour}-${minute}`;
+}
+
+async function loadEpgSidebar(streamId, hasCatchup) {
+  if (!liveEpgContainer || !epgList) return;
+  
+  if (activePlaylistType !== 'xtream') {
+    liveEpgContainer.style.display = 'none';
+    return;
+  }
+
+  currentLiveChannelId = streamId;
+  liveEpgContainer.style.display = 'flex';
+  epgList.innerHTML = '<div class="empty-list-placeholder">Lade Programmübersicht...</div>';
+  
+  try {
+    const res = await fetchXtreamApi(activeAccount, 'get_simple_data_table', { stream_id: streamId });
+    epgList.innerHTML = '';
+    
+    if (res && res.epg_listings && res.epg_listings.length > 0) {
+      currentEpgListings = res.epg_listings;
+      let scrollToElement = null;
+      res.epg_listings.forEach(listing => {
+        const item = document.createElement('li');
+        item.className = 'epg-item';
+        
+        const title = safeBase64Decode(listing.title);
+        const desc = safeBase64Decode(listing.description);
+        
+        const startTimestamp = Number(listing.start_timestamp);
+        const endTimestamp = Number(listing.stop_timestamp || listing.end_timestamp);
+        
+        const dateObj = new Date(startTimestamp * 1000);
+        const dateStr = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+        const startTimeStr = dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const endTimeStr = new Date(endTimestamp * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        const timeSpan = document.createElement('div');
+        timeSpan.className = 'epg-time';
+        timeSpan.textContent = `${dateStr} | ${startTimeStr} - ${endTimeStr}`;
+        item.appendChild(timeSpan);
+        
+        const titleRow = document.createElement('div');
+        titleRow.className = 'epg-title-row';
+        titleRow.style.display = 'flex';
+        titleRow.style.alignItems = 'center';
+        titleRow.style.justifyContent = 'space-between';
+        titleRow.style.width = '100%';
+
+        const titleSpan = document.createElement('div');
+        titleSpan.className = 'epg-title';
+        titleSpan.textContent = title;
+        titleRow.appendChild(titleSpan);
+
+        let descSpan = null;
+        if (desc) {
+          const toggleBtn = document.createElement('button');
+          toggleBtn.className = 'epg-toggle-desc';
+          toggleBtn.innerHTML = '▼';
+          toggleBtn.style.background = 'none';
+          toggleBtn.style.border = 'none';
+          toggleBtn.style.color = 'var(--text-muted)';
+          toggleBtn.style.cursor = 'pointer';
+          toggleBtn.style.fontSize = '10px';
+          toggleBtn.style.padding = '4px';
+          toggleBtn.style.marginLeft = '8px';
+          titleRow.appendChild(toggleBtn);
+
+          descSpan = document.createElement('div');
+          descSpan.className = 'epg-desc';
+          descSpan.textContent = desc;
+          descSpan.style.display = 'none';
+
+          toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (descSpan.style.display === 'none') {
+              descSpan.style.display = 'block';
+              toggleBtn.innerHTML = '▲';
+              toggleBtn.style.color = 'var(--accent-cyan)';
+            } else {
+              descSpan.style.display = 'none';
+              toggleBtn.innerHTML = '▼';
+              toggleBtn.style.color = 'var(--text-muted)';
+            }
+          });
+        }
+        item.appendChild(titleRow);
+        
+        if (descSpan) {
+          item.appendChild(descSpan);
+        }
+        
+        const now = Math.floor(Date.now() / 1000);
+        const hasArchive = hasCatchup && (endTimestamp < now);
+        const isCurrentTimeshift = isTimeshiftActive && timeshiftProgramInfo && 
+          Number(listing.start_timestamp) === Number(timeshiftProgramInfo.start_timestamp);
+        const isLiveProgram = (startTimestamp <= now && endTimestamp >= now);
+
+        if (isCurrentTimeshift) {
+          item.classList.add('playing');
+          scrollToElement = item;
+        } else if (isLiveProgram) {
+          item.classList.add('current-program');
+          const badge = document.createElement('span');
+          badge.className = 'epg-badge current';
+          badge.textContent = 'Live';
+          item.appendChild(badge);
+          
+          if (!scrollToElement) {
+            scrollToElement = item;
+          }
+        } else if (hasArchive) {
+          item.classList.add('has-catchup');
+          const badge = document.createElement('span');
+          badge.className = 'epg-badge archive';
+          badge.textContent = 'Archiv';
+          item.appendChild(badge);
+          
+          item.addEventListener('click', () => {
+            const activeItems = epgList.querySelectorAll('.epg-item.playing');
+            activeItems.forEach(el => el.classList.remove('playing'));
+            item.classList.add('playing');
+            
+            playTimeshift(listing, streamId);
+          });
+        }
+        
+        epgList.appendChild(item);
+      });
+
+      if (scrollToElement) {
+        setTimeout(() => {
+          scrollToElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    } else {
+      epgList.innerHTML = '<div class="empty-list-placeholder">Keine Programmdaten verfügbar.</div>';
+    }
+  } catch (e) {
+    console.error("EPG fetch failed:", e);
+    epgList.innerHTML = '<div class="empty-list-placeholder">Fehler beim Laden des EPGs.</div>';
+  }
+}
+
+function playTimeshift(epgListing, streamId) {
+  isTimeshiftActive = true;
+  timeshiftProgramInfo = epgListing;
+  
+  const baseUrl = getAccountBaseUrl(activeAccount);
+  const durationMins = Math.floor((Number(epgListing.stop_timestamp || epgListing.end_timestamp) - Number(epgListing.start_timestamp)) / 60) || 60;
+  const startFormatted = formatTimeshiftDate(epgListing.start_timestamp);
+  
+  const url = `${baseUrl}/timeshift/${activeAccount.username}/${activeAccount.password}/${durationMins}/${startFormatted}/${streamId}.ts`;
+  
+  const title = safeBase64Decode(epgListing.title);
+  
+  if (ctrlBackToLive) {
+    ctrlBackToLive.style.display = 'inline-flex';
+  }
+  
+  const streamInfo = document.getElementById('stream-info');
+  if (streamInfo) {
+    streamInfo.textContent = 'ARCHIV';
+    streamInfo.style.background = 'var(--accent-cyan)';
+    streamInfo.style.boxShadow = '0 0 8px rgba(0, 242, 254, 0.4)';
+  }
+  
+  playChannel(`${currentLiveChannelName} (Archiv: ${title})`, 'Timeshift TV', currentLiveChannelLogo, url);
 }

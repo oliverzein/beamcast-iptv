@@ -3,6 +3,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 const path = require('path');
 const url = require('url');
+const fs = require('fs');
 
 // Enable HEVC hardware decoding switches in Electron/Chromium
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
@@ -98,6 +99,10 @@ function isLiveUrl(streamUrl) {
     const parsed = url.parse(streamUrl);
     const pathname = (parsed.pathname || '').toLowerCase();
     
+    if (pathname.includes('/timeshift/')) {
+      return false;
+    }
+    
     // Check Xtream Codes paths
     if (pathname.includes('/live/')) {
       return true;
@@ -155,7 +160,7 @@ function runFfprobeCommand(ffprobeArgs, timeoutMs) {
 }
 
 function getVideoMetadata(streamUrl, isLive) {
-  if (isLive) {
+  if (isLive || streamUrl.toLowerCase().includes('/timeshift/')) {
     return Promise.resolve({ codec: 'h264', duration: 0 });
   }
   if (metadataCache.has(streamUrl)) {
@@ -204,27 +209,54 @@ function setCorsHeaders(res) {
 // Build the arguments for the FFmpeg process
 function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHEVC) {
   const ffmpegArgs = ['-loglevel', 'warning'];
-  
-  // Add network stream optimization parameters BEFORE -i
-  ffmpegArgs.push(
-    '-timeout', '5000000',          // 5 seconds connection timeout
-    '-reconnect', '1',              // Reconnect on disconnect
-    '-reconnect_at_eof', '1',       // Reconnect at EOF
-    '-reconnect_streamed', '1',     // Reconnect streamed data
-    '-reconnect_delay_max', '5'     // Max delay before reconnecting (5s)
-  );
 
-  if (isLive) {
+  const isTimeshift = targetStreamUrl.toLowerCase().includes('/timeshift/');
+
+  // Add network stream optimization parameters BEFORE -i
+  ffmpegArgs.push('-timeout', '5000000'); // 5 seconds connection timeout
+  if (isTimeshift) {
+    // Timeshift archives are finite: EOF means end of program.
+    // Reconnecting at EOF makes the server restart the archive from the
+    // beginning, which resets timestamps and makes the player jump back.
     ffmpegArgs.push(
-      '-probesize', '1000000',        // Limit probe size to 1MB for instant start on live TV
-      '-analyzeduration', '1000000'   // Limit analyze duration to 1s for instant start on live TV
+      '-reconnect', '1',
+      '-reconnect_delay_max', '2'
     );
+  } else {
+    ffmpegArgs.push(
+      '-reconnect', '1',              // Reconnect on disconnect
+      '-reconnect_at_eof', '1',       // Reconnect at EOF
+      '-reconnect_streamed', '1',     // Reconnect streamed data
+      '-reconnect_delay_max', '5'     // Max delay before reconnecting (5s)
+    );
+  }
+
+  if (isLive || isTimeshift) {
+    ffmpegArgs.push(
+      '-probesize', '1000000',        // Limit probe size to 1MB for instant start on live TV/Timeshift
+      '-analyzeduration', '1000000'   // Limit analyze duration to 1s for instant start on live TV/Timeshift
+    );
+    if (isTimeshift) {
+      ffmpegArgs.push('-correct_ts_overflow', '1');
+      // Allow a fast initial burst (10s worth of content) so the first canplay
+      // event fires quickly (especially important after a seek), then throttle
+      // to 1.5x realtime to prevent MSE buffer overflow.
+      ffmpegArgs.push('-readrate_initial_burst', '10');
+      ffmpegArgs.push('-readrate', '1.5');
+    }
   } else {
     // For VOD, use larger values to correctly probe Matroska/MKV with multiple tracks/subtitles
     ffmpegArgs.push(
       '-probesize', '15000000',       // 15MB probesize for VOD
       '-analyzeduration', '5000000'   // 5s analyzeduration for VOD
     );
+  }
+
+  // Always generate PTS and discard corrupt packets to handle stream discontinuities/sync issues
+  if (isTimeshift) {
+    ffmpegArgs.push('-fflags', '+genpts+igndts+discardcorrupt');
+  } else {
+    ffmpegArgs.push('-fflags', '+genpts+discardcorrupt');
   }
 
   if (start) {
@@ -238,6 +270,10 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
     '-dn'                    // Disable data streams
   );
 
+  if (isLive || isTimeshift) {
+    ffmpegArgs.push('-avoid_negative_ts', 'make_zero');
+  }
+
   // Check if video needs transcoding
   const unsupportedCodecs = ['hevc', 'h265', 'mpeg2video', 'vc1', 'mpeg4', 'msmpeg4v3', 'wmv3'];
   let needTranscoding = unsupportedCodecs.includes(codec.toLowerCase());
@@ -245,6 +281,12 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
   // If codec detection failed but it's an MKV file on VOD, default to H.264 transcode for safety
   if (codec === 'unknown' && !isLive && targetStreamUrl.toLowerCase().split('?')[0].endsWith('.mkv')) {
     console.warn(`[Proxy] Codec detection failed on VOD MKV stream, defaulting to H.264 transcode for safety.`);
+    needTranscoding = true;
+  }
+
+  // Force transcoding for timeshift streams to resolve timeline/DTS/PTS discontinuities
+  if (isTimeshift) {
+    console.log('[Proxy] Timeshift stream detected: forcing H.264 transcode to fix timeline discontinuities.');
     needTranscoding = true;
   }
 
@@ -271,7 +313,14 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
   ffmpegArgs.push(
     '-c:a', 'aac',           // Transcode audio to AAC
     '-b:a', '192k',          // Audio bitrate
-    '-ac', '2',              // Downmix to stereo
+    '-ac', '2'               // Downmix to stereo
+  );
+
+  if (isLive || isTimeshift) {
+    ffmpegArgs.push('-af', 'aresample=async=1'); // Force audio resampling to sync with video frames
+  }
+
+  ffmpegArgs.push(
     '-f', 'mpegts',          // MPEG-TS container
     'pipe:1'                 // Output to stdout
   );
@@ -331,6 +380,11 @@ function handleStreamRequest(req, res, reqUrl) {
     }
 
     console.log(`[FFmpeg Command] ffmpeg ${ffmpegArgs.join(' ')}`);
+    
+    // Write start header to log file
+    const logFilePath = path.join(__dirname, 'ffmpeg.log');
+    fs.writeFileSync(logFilePath, `--- Playback session started at ${new Date().toISOString()} ---\nURL: ${targetStreamUrl}\nCommand: ffmpeg ${ffmpegArgs.join(' ')}\n\n`);
+
     // Spawn FFmpeg
     const ffmpeg = spawn('ffmpeg', ffmpegArgs);
 
@@ -339,7 +393,9 @@ function handleStreamRequest(req, res, reqUrl) {
     ffmpeg.stdout.pipe(res);
 
     ffmpeg.stderr.on('data', (data) => {
-      console.error(`FFmpeg stderr: ${data.toString()}`);
+      const msg = data.toString();
+      console.error(`FFmpeg stderr: ${msg}`);
+      fs.appendFileSync(logFilePath, msg);
     });
 
     // Track if this response is the one that owns the process
@@ -364,6 +420,7 @@ function handleStreamRequest(req, res, reqUrl) {
 
     ffmpeg.on('exit', (code) => {
       console.log(`FFmpeg exited with code ${code}`);
+      fs.appendFileSync(path.join(__dirname, 'ffmpeg.log'), `\n--- FFmpeg exited with code ${code} ---\n`);
       if (isCurrentProcess && activeFfmpegProcess === ffmpeg) {
         activeFfmpegProcess = null;
       }

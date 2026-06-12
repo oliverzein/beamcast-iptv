@@ -91,6 +91,7 @@
                 <input type="range" id="ctrl-volume" min="0" max="1" step="0.05" value="1">
               </div>
               <div class="stream-info" id="stream-info">LIVE</div>
+              <button id="ctrl-back-to-live" class="btn-sm btn-sm-primary" style="display: none; margin-left: 8px;">🔴 Back to Live</button>
               <button id="ctrl-mpv" class="ctrl-btn" title="Open in External MPV Player" style="margin-right: 6px; display: none;">🎬 MPV</button>
               <button id="ctrl-fullscreen" class="ctrl-btn">⛶</button>
               <button id="ctrl-player-only" class="ctrl-btn" title="Toggle Player Only View">📺</button>
@@ -110,6 +111,16 @@
             <p id="playback-error-text" style="font-size: 14px; color: var(--text-muted); max-width: 80%; line-height: 1.4;">Failed to decode stream. The stream might be offline or URL incorrect.</p>
             <button id="btn-close-error" class="btn-sm btn-sm-danger" style="margin-top: 10px;">Dismiss</button>
           </div>
+        </div>
+
+        <!-- Live TV EPG Sidebar (hidden by default) -->
+        <div class="live-epg-container" id="live-epg-container" style="display: none;">
+          <div class="epg-header">
+            <h3>Programmübersicht</h3>
+          </div>
+          <ul class="epg-list" id="epg-list">
+            <!-- EPG programs with timeshift options populated dynamically -->
+          </ul>
         </div>
 
         <!-- Series Season/Episode Grid (hidden by default) -->
