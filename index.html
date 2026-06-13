@@ -60,6 +60,7 @@
         </div>
         <div class="top-bar-right" style="display: flex; align-items: center; gap: 12px;">
           <div id="playback-badge" class="playback-badge" style="display: none;"></div>
+          <button id="btn-toggle-always-mpv" class="btn-sm btn-sm-secondary" style="display: flex; align-items: center; gap: 6px;">🎬 MPV Mode: OFF</button>
           <button id="btn-sync-xtream" class="btn-sm btn-sm-primary" style="display: none; align-items: center; gap: 6px;">🔄 Sync Cache</button>
           <div class="status-indicator">
             <span class="pulse-dot green" id="status-dot"></span>
@@ -224,5 +225,17 @@
   <script src="node_modules/mpegts.js/dist/mpegts.js"></script>
   <script src="db.js"></script>
   <script src="renderer.js"></script>
+
+  <!-- MPV status bar -->
+  <div id="mpv-status-bar" class="mpv-status-bar" style="display: none;">
+    <div class="mpv-status-content">
+      <span class="pulse-dot green"></span>
+      <span id="mpv-status-text">MPV playing: Stream</span>
+    </div>
+    <div class="mpv-status-actions">
+      <button id="btn-mpv-stop" class="btn-sm btn-sm-danger">⏹ Stoppen</button>
+      <button id="btn-mpv-internal" class="btn-sm btn-sm-primary">📺 Intern abspielen</button>
+    </div>
+  </div>
 </body>
 </html>
