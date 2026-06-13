@@ -578,7 +578,7 @@ function filterChannels() {
 
 // Handle playback
 function playChannel(name, group, logo, streamUrl) {
-  if (isAlwaysMpvEnabled && !isMpvActive) {
+  if (isAlwaysMpvEnabled) {
     activeChannelName.textContent = name;
     activeChannelGroup.textContent = group || 'Live Stream';
     activeStreamUrl = streamUrl;
