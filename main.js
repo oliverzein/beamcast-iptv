@@ -382,7 +382,7 @@ function handleStreamRequest(req, res, reqUrl) {
     console.log(`[FFmpeg Command] ffmpeg ${ffmpegArgs.join(' ')}`);
     
     // Write start header to log file
-    const logFilePath = path.join(__dirname, 'ffmpeg.log');
+    const logFilePath = path.join(app.getPath('userData'), 'ffmpeg.log');
     fs.writeFileSync(logFilePath, `--- Playback session started at ${new Date().toISOString()} ---\nURL: ${targetStreamUrl}\nCommand: ffmpeg ${ffmpegArgs.join(' ')}\n\n`);
 
     // Spawn FFmpeg
@@ -420,7 +420,7 @@ function handleStreamRequest(req, res, reqUrl) {
 
     ffmpeg.on('exit', (code) => {
       console.log(`FFmpeg exited with code ${code}`);
-      fs.appendFileSync(path.join(__dirname, 'ffmpeg.log'), `\n--- FFmpeg exited with code ${code} ---\n`);
+      fs.appendFileSync(logFilePath, `\n--- FFmpeg exited with code ${code} ---\n`);
       if (isCurrentProcess && activeFfmpegProcess === ffmpeg) {
         activeFfmpegProcess = null;
       }
@@ -490,8 +490,8 @@ const proxyServer = http.createServer((req, res) => {
   }
 });
 
-function launchExternalPlayer(streamUrl) {
-  // 1. Laufenden externen Prozess killen, falls vorhanden
+function launchExternalPlayer(streamUrl, streamName = 'Stream') {
+  // 1. Kill active external player process if running
   if (activeExternalProcess) {
     console.log('Killing previous external player process');
     try {
@@ -502,7 +502,7 @@ function launchExternalPlayer(streamUrl) {
     activeExternalProcess = null;
   }
 
-  // 2. Laufenden internen FFmpeg-Transkodierungsprozess killen, falls vorhanden
+  // 2. Kill active internal FFmpeg transcode process if running
   if (activeFfmpegProcess) {
     console.log('Killing active FFmpeg transcode process due to external player launch');
     try {
@@ -513,12 +513,13 @@ function launchExternalPlayer(streamUrl) {
     activeFfmpegProcess = null;
   }
 
-  // 3. Renderer anweisen, das Playback-UI zu schließen
+  // 3. Inform renderer that MPV is launching
   if (mainWindow) {
     mainWindow.webContents.send('stop-playback');
+    mainWindow.webContents.send('mpv-status-changed', { active: true, name: streamName });
   }
 
-  // 4. Externen Player (aktuell MPV) starten
+  // 4. Launch MPV
   console.log(`Launching external player (mpv) for stream: ${streamUrl}`);
   const externalProcess = spawn('mpv', [streamUrl], {
     detached: true,
@@ -531,12 +532,23 @@ function launchExternalPlayer(streamUrl) {
   externalProcess.on('exit', () => {
     if (activeExternalProcess === externalProcess) {
       activeExternalProcess = null;
+      if (mainWindow) {
+        mainWindow.webContents.send('mpv-status-changed', { active: false });
+      }
     }
   });
 }
 
-ipcMain.on('open-in-mpv', (event, streamUrl) => {
-  launchExternalPlayer(streamUrl);
+ipcMain.on('open-in-mpv', (event, data) => {
+  launchExternalPlayer(data.url, data.name);
+});
+
+ipcMain.on('stop-mpv', () => {
+  if (activeExternalProcess) {
+    try {
+      activeExternalProcess.kill('SIGKILL');
+    } catch (e) {}
+  }
 });
 
 ipcMain.on('show-context-menu', (event, { name, url }) => {
@@ -544,7 +556,7 @@ ipcMain.on('show-context-menu', (event, { name, url }) => {
     {
       label: `Open "${name}" in MPV`,
       click: () => {
-        launchExternalPlayer(url);
+        launchExternalPlayer(url, name);
       }
     }
   ];
