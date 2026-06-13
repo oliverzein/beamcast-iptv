@@ -1233,3 +1233,98 @@ input[type="range"]::-webkit-slider-thumb:hover {
   background: rgba(255, 59, 48, 0.1);
   border: 1px solid rgba(255, 59, 48, 0.2);
 }
+
+/* MPV Active Layout State */
+.app-container.mpv-active .video-container {
+  display: none !important;
+}
+
+.app-container.mpv-active:not(.epg-open) {
+  grid-template-columns: 1fr;
+}
+
+.app-container.mpv-active:not(.epg-open) .main-content {
+  display: none;
+}
+
+.app-container.mpv-active.epg-open .player-frame {
+  padding: 0;
+}
+
+.app-container.mpv-active.epg-open .live-epg-container {
+  width: 100%;
+  max-width: 100%;
+  border-left: none;
+  height: calc(100vh - 80px);
+}
+
+/* Floating Status Bar */
+.mpv-status-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  background: rgba(7, 9, 14, 0.75);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.15), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.mpv-status-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.1);
+}
+
+.mpv-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Always MPV Toggle Neon States */
+#btn-toggle-always-mpv.active {
+  background: rgba(0, 242, 254, 0.15) !important;
+  color: var(--accent-cyan) !important;
+  border: 1px solid var(--accent-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+}
+
+/* Direct Play Buttons */
+.channel-list li .mpv-direct-btn,
+.epg-item .mpv-direct-btn {
+  display: none;
+  background: rgba(0, 242, 254, 0.05);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: var(--accent-cyan);
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.channel-list li .mpv-direct-btn:hover,
+.epg-item .mpv-direct-btn:hover {
+  background: var(--accent-cyan);
+  color: #000;
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
+}
+
+.channel-list li:hover .mpv-direct-btn,
+.epg-item:hover .mpv-direct-btn {
+  display: inline-block;
+}
