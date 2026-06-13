@@ -94,6 +94,88 @@ let seekDebounceTimeout = null;
 let editingAccountId = null;
 let controlsTimeout = null;
 
+// MPV playback state
+let isAlwaysMpvEnabled = localStorage.getItem('alwaysUseMpv') === 'true';
+let isMpvActive = false;
+
+const btnToggleAlwaysMpv = document.getElementById('btn-toggle-always-mpv');
+const mpvStatusBar = document.getElementById('mpv-status-bar');
+const mpvStatusText = document.getElementById('mpv-status-text');
+const btnMpvStop = document.getElementById('btn-mpv-stop');
+const btnMpvInternal = document.getElementById('btn-mpv-internal');
+
+function updateAlwaysMpvButtonState() {
+  if (!btnToggleAlwaysMpv) return;
+  if (isAlwaysMpvEnabled) {
+    btnToggleAlwaysMpv.classList.add('active');
+    btnToggleAlwaysMpv.textContent = '🎬 MPV Mode: ON';
+  } else {
+    btnToggleAlwaysMpv.classList.remove('active');
+    btnToggleAlwaysMpv.textContent = '🎬 MPV Mode: OFF';
+  }
+}
+
+function setEpgContainerDisplay(display) {
+  if (!liveEpgContainer) return;
+  liveEpgContainer.style.display = display;
+  if (display === 'flex') {
+    appContainer.classList.add('epg-open');
+  } else {
+    appContainer.classList.remove('epg-open');
+  }
+}
+
+function setupMpvIntegrations() {
+  updateAlwaysMpvButtonState();
+
+  if (btnToggleAlwaysMpv) {
+    btnToggleAlwaysMpv.addEventListener('click', () => {
+      isAlwaysMpvEnabled = !isAlwaysMpvEnabled;
+      localStorage.setItem('alwaysUseMpv', isAlwaysMpvEnabled);
+      updateAlwaysMpvButtonState();
+    });
+  }
+
+  if (btnMpvStop) {
+    btnMpvStop.addEventListener('click', () => {
+      window.electronAPI.stopMpv();
+    });
+  }
+
+  if (btnMpvInternal) {
+    btnMpvInternal.addEventListener('click', () => {
+      window.electronAPI.stopMpv();
+      if (activeStreamUrl) {
+        const tempAlways = isAlwaysMpvEnabled;
+        isAlwaysMpvEnabled = false; // Bypass setting temporarily
+        playChannel(activeChannelName.textContent, activeChannelGroup.textContent, currentLiveChannelLogo, activeStreamUrl);
+        isAlwaysMpvEnabled = tempAlways;
+      }
+    });
+  }
+
+  window.electronAPI.onMpvStatusChanged((data) => {
+    isMpvActive = data.active;
+    if (data.active) {
+      appContainer.classList.add('mpv-active');
+      if (mpvStatusBar) {
+        mpvStatusBar.style.display = 'flex';
+        mpvStatusText.textContent = `MPV läuft: ${data.name}`;
+      }
+      // Auto-pause internal player
+      if (!videoPlayer.paused) {
+        videoPlayer.pause();
+        ctrlPlay.textContent = "▶";
+      }
+    } else {
+      appContainer.classList.remove('mpv-active');
+      if (mpvStatusBar) {
+        mpvStatusBar.style.display = 'none';
+      }
+    }
+  });
+}
+
 // Preset Channels
 const defaultChannels = [
   {
@@ -137,6 +219,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupM3uModal();
   setupGlobalModalDismissal();
   setupTranscodeStatusListener();
+  setupMpvIntegrations();
   
   // Restore previously loaded provider and stream
   await restoreLastState();
@@ -381,6 +464,31 @@ function renderChannelList(list) {
       li.appendChild(catchupIndicator);
     }
 
+    if (activePlaylistType === 'm3u' || activeTab !== 'series') {
+      const mpvBtn = document.createElement('button');
+      mpvBtn.className = 'mpv-direct-btn';
+      mpvBtn.innerHTML = '🎬';
+      mpvBtn.title = 'Direkt in MPV abspielen';
+      mpvBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        let streamUrl = null;
+        if (activePlaylistType === 'm3u') {
+          streamUrl = ch.url;
+        } else if (activeTab === 'live') {
+          const baseUrl = getAccountBaseUrl(activeAccount);
+          streamUrl = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
+        } else if (activeTab === 'vod') {
+          const baseUrl = getAccountBaseUrl(activeAccount);
+          const ext = ch.containerExtension || 'mp4';
+          streamUrl = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
+        }
+        if (streamUrl) {
+          window.electronAPI.openInMpv(streamUrl, ch.name);
+        }
+      });
+      li.appendChild(mpvBtn);
+    }
+
     li.addEventListener('click', () => {
       const activeLi = channelList.querySelector('li.active');
       if (activeLi) activeLi.classList.remove('active');
@@ -470,6 +578,13 @@ function filterChannels() {
 
 // Handle playback
 function playChannel(name, group, logo, streamUrl) {
+  if (isAlwaysMpvEnabled && !isMpvActive) {
+    activeChannelName.textContent = name;
+    activeChannelGroup.textContent = group || 'Live Stream';
+    activeStreamUrl = streamUrl;
+    window.electronAPI.openInMpv(streamUrl, name);
+    return;
+  }
   activeChannelName.textContent = name;
   activeChannelGroup.textContent = group || 'Live Stream';
   
@@ -1402,13 +1517,13 @@ function handleXtreamClick(item) {
     loadEpgSidebar(item.streamId, item.catchup === 1);
   } else if (activeTab === 'vod') {
     localStorage.setItem('lastSelectedId_vod', item.streamId);
-    if (liveEpgContainer) liveEpgContainer.style.display = 'none';
+    setEpgContainerDisplay('none');
     isTimeshiftActive = false;
     const ext = item.containerExtension || 'mp4';
     const url = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${item.streamId}.${ext}`;
     playChannel(item.name, 'Movie', item.logo, url);
   } else if (activeTab === 'series') {
-    if (liveEpgContainer) liveEpgContainer.style.display = 'none';
+    setEpgContainerDisplay('none');
     isTimeshiftActive = false;
     loadSeriesEpisodes(item);
   }
@@ -1628,12 +1743,12 @@ async function loadEpgSidebar(streamId, hasCatchup) {
   if (!liveEpgContainer || !epgList) return;
   
   if (activePlaylistType !== 'xtream') {
-    liveEpgContainer.style.display = 'none';
+    setEpgContainerDisplay('none');
     return;
   }
 
   currentLiveChannelId = streamId;
-  liveEpgContainer.style.display = 'flex';
+  setEpgContainerDisplay('flex');
   epgList.innerHTML = '<div class="empty-list-placeholder">Lade Programmübersicht...</div>';
   
   try {
@@ -1738,6 +1853,21 @@ async function loadEpgSidebar(streamId, hasCatchup) {
           badge.className = 'epg-badge archive';
           badge.textContent = 'Archiv';
           item.appendChild(badge);
+
+          const mpvBtn = document.createElement('button');
+          mpvBtn.className = 'mpv-direct-btn';
+          mpvBtn.innerHTML = '🎬 MPV';
+          mpvBtn.title = 'In MPV abspielen';
+          mpvBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const baseUrl = getAccountBaseUrl(activeAccount);
+            const durationMins = Math.floor((Number(listing.stop_timestamp || listing.end_timestamp) - Number(listing.start_timestamp)) / 60) || 60;
+            const startFormatted = formatTimeshiftDate(listing.start_timestamp);
+            const url = `${baseUrl}/timeshift/${activeAccount.username}/${activeAccount.password}/${durationMins}/${startFormatted}/${streamId}.ts`;
+            const title = safeBase64Decode(listing.title);
+            window.electronAPI.openInMpv(url, `${currentLiveChannelName} (Archiv: ${title})`);
+          });
+          item.appendChild(mpvBtn);
           
           item.addEventListener('click', () => {
             const activeItems = epgList.querySelectorAll('.epg-item.playing');
@@ -1745,6 +1875,16 @@ async function loadEpgSidebar(streamId, hasCatchup) {
             item.classList.add('playing');
             
             playTimeshift(listing, streamId);
+          });
+
+          item.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const baseUrl = getAccountBaseUrl(activeAccount);
+            const durationMins = Math.floor((Number(listing.stop_timestamp || listing.end_timestamp) - Number(listing.start_timestamp)) / 60) || 60;
+            const startFormatted = formatTimeshiftDate(listing.start_timestamp);
+            const url = `${baseUrl}/timeshift/${activeAccount.username}/${activeAccount.password}/${durationMins}/${startFormatted}/${streamId}.ts`;
+            const title = safeBase64Decode(listing.title);
+            window.electronAPI.showContextMenu(`${currentLiveChannelName} (Archiv: ${title})`, url);
           });
         }
         
