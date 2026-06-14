@@ -468,6 +468,40 @@ function handleXtreamApiRequest(req, res, reqUrl) {
     });
 }
 
+// Handle Xtream Codes XMLTV (full EPG dump) forwarding
+function handleXtreamXmltvRequest(req, res, reqUrl) {
+  const { host, username, password } = reqUrl.query;
+
+  if (!host || !username || !password) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'Missing required parameters' }));
+  }
+
+  const targetHost = host.startsWith('http://') || host.startsWith('https://') ? host : `http://${host}`;
+  const query = new URLSearchParams({ username, password });
+  const targetUrl = `${targetHost}/xmltv.php?${query.toString()}`;
+
+  console.log(`Forwarding Xtream XMLTV request: ${targetUrl}`);
+
+  fetch(targetUrl)
+    .then(response => {
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.text();
+    })
+    .then(body => {
+      res.writeHead(200, {
+        'Content-Type': 'application/xml',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(body);
+    })
+    .catch(err => {
+      console.error('Xtream XMLTV Proxy Error:', err);
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch XMLTV from Xtream server', details: err.message }));
+    });
+}
+
 // Start local HTTP transcoding proxy server
 const proxyServer = http.createServer((req, res) => {
   setCorsHeaders(res);
@@ -484,6 +518,8 @@ const proxyServer = http.createServer((req, res) => {
     handleStreamRequest(req, res, reqUrl);
   } else if (reqUrl.pathname === '/xtream/api') {
     handleXtreamApiRequest(req, res, reqUrl);
+  } else if (reqUrl.pathname === '/xtream/xmltv') {
+    handleXtreamXmltvRequest(req, res, reqUrl);
   } else {
     res.writeHead(404);
     res.end('Not Found');
