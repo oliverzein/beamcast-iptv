@@ -37,6 +37,8 @@
       "style.css",
       "assets/**/*",
       "db.js",
+      "epg-parse.js",
+      "epg-worker.js",
       "package.json"
     ],
     "linux": {
