@@ -1396,6 +1396,14 @@ async function connectXtreamAccount(account, forceSync = false) {
     const series = await fetchXtreamApi(account, 'get_series');
     await IPTVDb.saveStreams('series', account.id, series);
 
+    // 5. Prefetch EPG (XMLTV). Non-fatal: sync succeeds even if guide is unavailable.
+    loaderText.textContent = "Syncing TV Guide...";
+    try {
+      await fetchAndStoreEpg(account);
+    } catch (epgErr) {
+      console.warn('[EPG] XMLTV prefetch failed (continuing sync):', epgErr.message);
+    }
+
     // Update account sync timestamp in IndexedDB
     account.lastSync = Date.now();
     await IPTVDb.addAccount(account);
@@ -1719,6 +1727,52 @@ async function restoreLastState() {
 }
 
 // --- EPG & Timeshift helpers ---
+
+// Fetch the full XMLTV dump, parse it (worker w/ main-thread fallback), and cache it.
+async function fetchAndStoreEpg(account) {
+  const query = new URLSearchParams({
+    host: account.host,
+    username: account.username,
+    password: account.password
+  });
+  const res = await fetch(`http://127.0.0.1:18080/xtream/xmltv?${query.toString()}`);
+  if (!res.ok) throw new Error(`XMLTV HTTP ${res.status}`);
+  const xml = await res.text();
+  const channelMap = await parseXmltvAsync(xml);
+  await IPTVDb.saveEpg(account.id, channelMap);
+  return channelMap;
+}
+
+// Parse XMLTV off the UI thread when possible, else fall back to the global parseXmltv.
+function parseXmltvAsync(xml) {
+  return new Promise((resolve) => {
+    if (typeof Worker === 'undefined') {
+      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+      return;
+    }
+    let worker;
+    try {
+      worker = new Worker('epg-worker.js');
+    } catch (e) {
+      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+      return;
+    }
+    worker.onmessage = (ev) => {
+      worker.terminate();
+      if (ev.data && ev.data.error) {
+        console.warn('[EPG] worker parse error, falling back:', ev.data.error);
+        resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+      } else {
+        resolve((ev.data && ev.data.channelMap) || {});
+      }
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+    };
+    worker.postMessage({ xml });
+  });
+}
 
 function safeBase64Decode(str) {
   if (!str) return "";
