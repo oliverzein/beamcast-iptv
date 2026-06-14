@@ -1768,40 +1768,66 @@ async function fetchAndStoreEpg(account) {
     username: account.username,
     password: account.password
   });
-  const res = await fetch(`http://127.0.0.1:18080/xtream/xmltv?${query.toString()}`);
+  const url = `http://127.0.0.1:18080/xtream/xmltv?${query.toString()}`;
+  console.log('[EPG] fetching XMLTV via proxy:', url);
+  const res = await fetch(url);
+  console.log('[EPG] proxy response status:', res.status, res.ok);
   if (!res.ok) throw new Error(`XMLTV HTTP ${res.status}`);
   const xml = await res.text();
+  console.log('[EPG] XMLTV downloaded, length:', xml.length, 'chars; first 120:', xml.slice(0, 120));
   const channelMap = await parseXmltvAsync(xml);
+  const channelCount = Object.keys(channelMap || {}).length;
+  const programmeCount = Object.values(channelMap || {}).reduce((n, arr) => n + (arr ? arr.length : 0), 0);
+  console.log('[EPG] parsed channelMap:', channelCount, 'channels,', programmeCount, 'programmes');
+  console.log('[EPG] saving to IndexedDB (saveEpg)...');
   await IPTVDb.saveEpg(account.id, channelMap);
+  console.log('[EPG] saveEpg complete for account', account.id);
   return channelMap;
 }
 
 // Parse XMLTV off the UI thread when possible, else fall back to the global parseXmltv.
 function parseXmltvAsync(xml) {
   return new Promise((resolve) => {
+    const fallback = (why) => {
+      console.warn('[EPG] parsing on main thread (fallback). reason:', why);
+      const map = (typeof parseXmltv === 'function') ? parseXmltv(xml) : {};
+      console.log('[EPG] main-thread parse produced', Object.keys(map || {}).length, 'channels');
+      resolve(map);
+    };
+
     if (typeof Worker === 'undefined') {
-      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+      fallback('Worker unavailable');
       return;
     }
     let worker;
     try {
       worker = new Worker('epg-worker.js');
     } catch (e) {
-      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+      fallback('Worker constructor threw: ' + (e && e.message));
       return;
     }
+
+    let settled = false;
+    const finish = (fn) => { if (settled) return; settled = true; clearTimeout(timer); try { worker.terminate(); } catch (_) {} fn(); };
+
+    // Watchdog: if the worker neither responds nor errors, don't hang the whole sync.
+    const timer = setTimeout(() => {
+      finish(() => fallback('worker timeout (no response in 30s)'));
+    }, 30000);
+
+    console.log('[EPG] worker created, posting', xml.length, 'chars for off-thread parse');
     worker.onmessage = (ev) => {
-      worker.terminate();
       if (ev.data && ev.data.error) {
-        console.warn('[EPG] worker parse error, falling back:', ev.data.error);
-        resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+        finish(() => fallback('worker reported error: ' + ev.data.error));
       } else {
-        resolve((ev.data && ev.data.channelMap) || {});
+        const map = (ev.data && ev.data.channelMap) || {};
+        console.log('[EPG] worker returned', Object.keys(map).length, 'channels');
+        finish(() => resolve(map));
       }
     };
-    worker.onerror = () => {
-      worker.terminate();
-      resolve(typeof parseXmltv === 'function' ? parseXmltv(xml) : {});
+    worker.onerror = (e) => {
+      console.warn('[EPG] worker.onerror:', e && e.message, '@', e && e.filename, 'line', e && e.lineno);
+      finish(() => fallback('worker.onerror'));
     };
     worker.postMessage({ xml });
   });
