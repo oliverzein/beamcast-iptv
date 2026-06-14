@@ -126,8 +126,13 @@ function setEpgContainerDisplay(display) {
   liveEpgContainer.style.display = display;
   if (display === 'flex') {
     appContainer.classList.add('epg-open');
+    localStorage.setItem('epgView', 'sidebar');
   } else {
     appContainer.classList.remove('epg-open');
+    // Only clear if not switching to grid view
+    if (!appContainer.classList.contains('guide-open')) {
+      localStorage.setItem('epgView', 'none');
+    }
   }
 }
 
@@ -1736,6 +1741,12 @@ async function restoreLastState() {
         
         // 2. Restore active stream if saved
         restoreLastStream();
+
+        // 3. Restore EPG view preference
+        const epgView = localStorage.getItem('epgView');
+        if (epgView === 'grid' && activeTab === 'live') {
+          openEpgGrid();
+        }
       } else {
         loadPresetChannels(defaultChannels);
       }
@@ -1840,12 +1851,14 @@ function openEpgGrid() {
   if (activePlaylistType !== 'xtream' || !activeAccount) return;
   appContainer.classList.add('guide-open');
   if (epgGridContainer) epgGridContainer.style.display = 'flex';
+  localStorage.setItem('epgView', 'grid');
   renderEpgGrid();
 }
 
 function closeEpgGrid() {
   appContainer.classList.remove('guide-open');
   if (epgGridContainer) epgGridContainer.style.display = 'none';
+  localStorage.setItem('epgView', 'none');
 }
 
 function epgFormatClock(epochSec) {
@@ -1876,14 +1889,16 @@ async function renderEpgGrid() {
   const epgMap = await IPTVDb.getEpgForChannels(activeAccount.id, epgIds);
 
   const now = Math.floor(Date.now() / 1000);
-  const maxCatchupDays = channels.reduce((m, c) => Math.max(m, Number(c.catchupDays) || 0), 0);
-  const windowStart = now - maxCatchupDays * 86400;
 
-  // Window end = latest programme stop across channels, fallback now + 3h.
+  // Window start = earliest programme start across all channels (not catchupDays).
+  let windowStart = now;
   let windowEnd = now + 3 * 3600;
   channels.forEach(c => {
     const list = epgMap[c.epgChannelId] || [];
-    if (list.length) windowEnd = Math.max(windowEnd, list[list.length - 1].stop);
+    if (list.length) {
+      windowStart = Math.min(windowStart, list[0].start);
+      windowEnd = Math.max(windowEnd, list[list.length - 1].stop);
+    }
   });
 
   const totalMin = Math.max(1, (windowEnd - windowStart) / 60);
@@ -1909,6 +1924,19 @@ async function renderEpgGrid() {
     timeline.appendChild(tick);
   }
   epgGridScroll.appendChild(timeline);
+
+  // Sticky date indicator — updates on horizontal scroll.
+  const dateLabel = document.createElement('div');
+  dateLabel.className = 'epg-date-label';
+  epgGridScroll.appendChild(dateLabel);
+
+  const updateDateLabel = () => {
+    const scrollSec = windowStart + (epgGridScroll.scrollLeft / EPG_PX_PER_MIN) * 60;
+    const d = new Date(scrollSec * 1000);
+    dateLabel.textContent = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+  epgGridScroll.addEventListener('scroll', updateDateLabel);
+  updateDateLabel();
 
   // Now-line.
   const nowLine = document.createElement('div');
@@ -1990,6 +2018,9 @@ async function renderEpgGrid() {
     epgGridScroll.appendChild(row);
   });
 
+  // Set now-line height to span full scrollable content.
+  nowLine.style.height = epgGridScroll.scrollHeight + 'px';
+
   // Scroll so the now-line is roughly centered.
   epgGridScroll.scrollLeft = Math.max(0, (now - windowStart) / 60 * EPG_PX_PER_MIN - 300);
 }
@@ -2024,9 +2055,7 @@ function playEpgLive(channel) {
   }
 
   localStorage.setItem('lastSelectedId_live', channel.streamId);
-  closeEpgGrid();
   playChannel(channel.name, 'Live Channel', channel.logo, url);
-  loadEpgSidebar(channel.streamId, channel.catchup === 1);
 }
 
 function handleEpgProgramClick(channel, p, flags) {
@@ -2035,8 +2064,6 @@ function handleEpgProgramClick(channel, p, flags) {
   if (flags.isLive) {
     playEpgLive(channel);
   } else if (flags.hasCatchup) {
-    closeEpgGrid();
-    loadEpgSidebar(channel.streamId, channel.catchup === 1);
     playTimeshift(epgToListing(p), channel.streamId);
   } else {
     showEpgDetails(channel, p);

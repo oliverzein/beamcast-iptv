@@ -1239,11 +1239,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
   display: none !important;
 }
 
-.app-container.mpv-active:not(.epg-open) {
+.app-container.mpv-active:not(.epg-open):not(.guide-open) {
   grid-template-columns: 1fr;
 }
 
-.app-container.mpv-active:not(.epg-open) .main-content {
+.app-container.mpv-active:not(.epg-open):not(.guide-open) .main-content {
   display: none;
 }
 
@@ -1256,6 +1256,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
   max-width: 100%;
   border-left: none;
   height: calc(100vh - 80px);
+}
+
+.app-container.mpv-active.guide-open .player-frame {
+  padding: 0;
 }
 
 /* Floating Status Bar */
@@ -1363,6 +1367,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
   z-index: 3;
   display: flex;
   height: 28px;
+  width: max-content;
+  min-width: 100%;
   background: rgba(7, 9, 14, 0.95);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -1382,11 +1388,27 @@ input[type="range"]::-webkit-slider-thumb:hover {
   padding-left: 4px;
   box-sizing: border-box;
 }
+.epg-date-label {
+  position: sticky;
+  top: 0;
+  left: var(--epg-chan-w, 200px);
+  z-index: 5;
+  width: fit-content;
+  padding: 2px 10px;
+  margin-top: -28px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: rgba(7, 9, 14, 0.92);
+  border-radius: 0 0 6px 0;
+  pointer-events: none;
+}
 
 .epg-grid-row {
   display: flex;
   height: 56px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  width: max-content;
 }
 .epg-grid-channel {
   position: sticky;
@@ -1427,8 +1449,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .epg-now-line {
   position: absolute;
-  top: 28px;
-  bottom: 0;
+  top: 0;
   width: 2px;
   background: #ff453a;
   z-index: 1;
