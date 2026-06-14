@@ -20,12 +20,60 @@
     return Math.floor(utcMs / 1000) - offsetSec;
   }
 
-  const api = { xmltvTimeToEpoch };
+  function decodeEntities(str) {
+    if (!str) return '';
+    return str
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)))
+      .replace(/&amp;/g, '&')
+      .trim();
+  }
+
+  function tagText(block, tag) {
+    const m = block.match(new RegExp('<' + tag + '\\b[^>]*>([\\s\\S]*?)<\\/' + tag + '>', 'i'));
+    return m ? decodeEntities(m[1]) : '';
+  }
+
+  function attr(attrs, name) {
+    const m = attrs.match(new RegExp(name + '\\s*=\\s*"([^"]*)"', 'i'));
+    return m ? m[1] : '';
+  }
+
+  function parseXmltv(xml) {
+    const out = {};
+    if (typeof xml !== 'string' || xml.indexOf('<programme') === -1) return out;
+    const re = /<programme\b([^>]*)>([\s\S]*?)<\/programme>/gi;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const attrs = m[1];
+      const body = m[2];
+      const channel = attr(attrs, 'channel');
+      if (!channel) continue;
+      const start = xmltvTimeToEpoch(attr(attrs, 'start'));
+      const stop = xmltvTimeToEpoch(attr(attrs, 'stop'));
+      if (Number.isNaN(start) || Number.isNaN(stop)) continue;
+      (out[channel] || (out[channel] = [])).push({
+        start,
+        stop,
+        title: tagText(body, 'title'),
+        desc: tagText(body, 'desc'),
+        category: tagText(body, 'category')
+      });
+    }
+    Object.keys(out).forEach((k) => out[k].sort((a, b) => a.start - b.start));
+    return out;
+  }
+
+  const api = { xmltvTimeToEpoch, parseXmltv };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = api;
   } else {
-    root.parseXmltv = root.parseXmltv || null; // defined in Task 2
+    root.parseXmltv = parseXmltv;
     root.xmltvTimeToEpoch = xmltvTimeToEpoch;
   }
 })(typeof self !== 'undefined' ? self : this);
