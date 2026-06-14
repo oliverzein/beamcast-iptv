@@ -4,7 +4,7 @@
  */
 const IPTVDb = {
   dbName: 'IPTVPlayerDB',
-  dbVersion: 2,
+  dbVersion: 3,
   db: null,
 
   /**
@@ -64,6 +64,15 @@ const IPTVDb = {
           seriesStore.createIndex('accountId', 'accountId', { unique: false });
           seriesStore.createIndex('categoryId', 'categoryId', { unique: false });
           seriesStore.createIndex('name', 'name', { unique: false });
+        }
+
+        // 4. EPG stores (added in v3)
+        if (!db.objectStoreNames.contains('epg_programmes')) {
+          const epgStore = db.createObjectStore('epg_programmes', { keyPath: 'compoundKey' });
+          epgStore.createIndex('accountId', 'accountId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('epg_meta')) {
+          db.createObjectStore('epg_meta', { keyPath: 'accountId' });
         }
       };
     });
@@ -170,6 +179,7 @@ const IPTVDb = {
         if (storeName === 'live_streams') {
           record.streamId = streamId;
           record.streamType = item.stream_type;
+          record.epgChannelId = item.epg_channel_id || null;
           const isArchiveTrue = item.tv_archive && item.tv_archive !== 0 && item.tv_archive !== '0' && item.tv_archive !== false;
           const isCatchupTrue = item.catchup && item.catchup !== 0 && item.catchup !== '0' && item.catchup !== false;
           const hasCatchup = isArchiveTrue || isCatchupTrue;
@@ -249,8 +259,76 @@ const IPTVDb = {
     });
   },
 
+  saveEpg(accountId, channelMap) {
+    return new Promise((resolve, reject) => {
+      const channelIds = Object.keys(channelMap || {});
+      const tx = this.db.transaction(['epg_programmes', 'epg_meta'], 'readwrite');
+      const epgStore = tx.objectStore('epg_programmes');
+      const metaStore = tx.objectStore('epg_meta');
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => reject(e.target.error);
+
+      let programmeCount = 0;
+      channelIds.forEach(channelId => {
+        const programmes = channelMap[channelId] || [];
+        programmeCount += programmes.length;
+        epgStore.put({
+          compoundKey: `${accountId}_${channelId}`,
+          accountId,
+          epgChannelId: channelId,
+          programmes
+        });
+      });
+
+      metaStore.put({
+        accountId,
+        lastFetched: Date.now(),
+        channelCount: channelIds.length,
+        programmeCount
+      });
+    });
+  },
+
+  getEpgForChannels(accountId, epgChannelIds) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['epg_programmes'], 'readonly');
+      const store = tx.objectStore('epg_programmes');
+      const result = {};
+      let pending = 0;
+      let done = false;
+
+      const finish = () => { if (done && pending === 0) resolve(result); };
+
+      (epgChannelIds || []).forEach(id => {
+        if (!id) return;
+        pending++;
+        const req = store.get(`${accountId}_${id}`);
+        req.onsuccess = () => {
+          if (req.result) result[id] = req.result.programmes || [];
+          pending--;
+          finish();
+        };
+        req.onerror = (e) => reject(e.target.error);
+      });
+
+      done = true;
+      finish();
+    });
+  },
+
+  getEpgMeta(accountId) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['epg_meta'], 'readonly');
+      const store = tx.objectStore('epg_meta');
+      const req = store.get(accountId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  },
+
   clearAccountCache(accountId) {
-    const stores = ['live_categories', 'vod_categories', 'series_categories', 'live_streams', 'vod_streams', 'series'];
+    const stores = ['live_categories', 'vod_categories', 'series_categories', 'live_streams', 'vod_streams', 'series', 'epg_programmes'];
     const promises = stores.map(storeName => {
       return new Promise((resolve, reject) => {
         const transaction = this.db.transaction([storeName], 'readwrite');
@@ -270,6 +348,13 @@ const IPTVDb = {
         request.onerror = (e) => reject(e.target.error);
       });
     });
+
+    promises.push(new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['epg_meta'], 'readwrite');
+      const req = tx.objectStore('epg_meta').delete(accountId);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject(e.target.error);
+    }));
 
     return Promise.all(promises);
   }
