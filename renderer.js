@@ -1985,6 +1985,18 @@ function playEpgLive(channel) {
   currentLiveChannelGroup = channel.group || 'Live Channel';
   currentLiveChannelLogo = channel.logo;
   isTimeshiftActive = false;
+
+  if (ctrlBackToLive) {
+    ctrlBackToLive.style.display = 'none';
+  }
+
+  const streamInfo = document.getElementById('stream-info');
+  if (streamInfo) {
+    streamInfo.textContent = 'LIVE';
+    streamInfo.style.background = 'red';
+    streamInfo.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.4)';
+  }
+
   localStorage.setItem('lastSelectedId_live', channel.streamId);
   closeEpgGrid();
   playChannel(channel.name, 'Live Channel', channel.logo, url);
