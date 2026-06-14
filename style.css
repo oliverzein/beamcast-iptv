@@ -1330,8 +1330,10 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ===== EPG Grid (TV Guide) ===== */
+.app-container.guide-open { grid-template-columns: 1fr; }
 .app-container.guide-open .sidebar { display: none; }
 .app-container.guide-open .player-frame { display: none; }
+.app-container.guide-open .main-content { grid-template-rows: 80px 1fr; min-height: 0; }
 
 .epg-grid-container {
   flex: 1;
