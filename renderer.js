@@ -69,6 +69,12 @@ const btnCloseModal = document.getElementById('btn-close-modal');
 const accountsList = document.getElementById('accounts-list');
 const accountForm = document.getElementById('account-form');
 const btnSyncXtream = document.getElementById('btn-sync-xtream');
+const btnToggleGuide = document.getElementById('btn-toggle-guide');
+const btnEpgRefresh = document.getElementById('btn-epg-refresh');
+const btnEpgClose = document.getElementById('btn-epg-close');
+const epgGridContainer = document.getElementById('epg-grid-container');
+const epgGridScroll = document.getElementById('epg-grid-scroll');
+const epgGridUpdated = document.getElementById('epg-grid-updated');
 const accountFormTitle = document.getElementById('account-form-title');
 const btnSaveAccount = document.getElementById('btn-save-account');
 const btnCancelEdit = document.getElementById('btn-cancel-edit');
@@ -236,6 +242,7 @@ function loadPresetChannels(list) {
   if (btnSyncXtream) {
     btnSyncXtream.style.display = 'none';
   }
+  if (btnToggleGuide) btnToggleGuide.style.display = 'none';
   
   localStorage.setItem('lastSelectedCategory', 'all');
   
@@ -309,6 +316,29 @@ function setupEventListeners() {
     if (activeAccount) {
       connectXtreamAccount(activeAccount, true);
     }
+  });
+
+  if (btnToggleGuide) btnToggleGuide.addEventListener('click', () => {
+    if (appContainer.classList.contains('guide-open')) closeEpgGrid();
+    else openEpgGrid();
+  });
+  if (btnEpgClose) btnEpgClose.addEventListener('click', closeEpgGrid);
+  if (btnEpgRefresh) btnEpgRefresh.addEventListener('click', async () => {
+    btnEpgRefresh.disabled = true;
+    const prev = btnEpgRefresh.textContent;
+    btnEpgRefresh.textContent = '⏳ ...';
+    try {
+      await fetchAndStoreEpg(activeAccount);
+      await renderEpgGrid();
+    } catch (e) {
+      console.warn('[EPG] refresh failed:', e.message);
+    } finally {
+      btnEpgRefresh.disabled = false;
+      btnEpgRefresh.textContent = prev;
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appContainer.classList.contains('guide-open')) closeEpgGrid();
   });
 }
 
@@ -1160,6 +1190,7 @@ function setupAccountsModal() {
             resetStatus();
             channelList.innerHTML = '<li class="empty-list-placeholder">Account details updated. Please connect again to sync.</li>';
             btnSyncXtream.style.display = 'none';
+            if (btnToggleGuide) btnToggleGuide.style.display = 'none';
           }
         }
 
@@ -1330,6 +1361,7 @@ function setActiveXtreamAccount(account) {
   
   // Show sync button
   btnSyncXtream.style.display = 'inline-flex';
+  if (btnToggleGuide) btnToggleGuide.style.display = 'flex';
 }
 
 // Connect and Cache Xtream Codes Account
@@ -1695,6 +1727,7 @@ async function restoreLastState() {
         
         // Show sync button
         btnSyncXtream.style.display = 'inline-flex';
+        if (btnToggleGuide) btnToggleGuide.style.display = 'flex';
         statusText.textContent = `Active: ${account.name}`;
         statusDot.className = "pulse-dot green";
 
@@ -1772,6 +1805,222 @@ function parseXmltvAsync(xml) {
     };
     worker.postMessage({ xml });
   });
+}
+
+const EPG_PX_PER_MIN = 5;
+const EPG_CHAN_WIDTH = 200;
+
+function openEpgGrid() {
+  if (activePlaylistType !== 'xtream' || !activeAccount) return;
+  appContainer.classList.add('guide-open');
+  if (epgGridContainer) epgGridContainer.style.display = 'flex';
+  renderEpgGrid();
+}
+
+function closeEpgGrid() {
+  appContainer.classList.remove('guide-open');
+  if (epgGridContainer) epgGridContainer.style.display = 'none';
+}
+
+function epgFormatClock(epochSec) {
+  return new Date(epochSec * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+async function renderEpgGrid() {
+  if (!epgGridScroll) return;
+  epgGridScroll.innerHTML = '<div class="epg-grid-empty">Lade Programmübersicht...</div>';
+
+  // Channels of the current live category (reuse the sidebar's category filter).
+  const categoryId = (activeTab === 'live') ? (categoryFilter.value || 'all') : 'all';
+  const channels = (await IPTVDb.getStreamsByCategory('live_streams', activeAccount.id, categoryId)) || [];
+
+  const meta = await IPTVDb.getEpgMeta(activeAccount.id);
+  if (epgGridUpdated) {
+    epgGridUpdated.textContent = meta && meta.lastFetched
+      ? `Stand: ${new Date(meta.lastFetched).toLocaleString('de-DE')}`
+      : 'Keine Guide-Daten';
+  }
+
+  if (!channels.length) {
+    epgGridScroll.innerHTML = '<div class="epg-grid-empty">Keine Kanäle in dieser Kategorie.</div>';
+    return;
+  }
+
+  const epgIds = channels.map(c => c.epgChannelId).filter(Boolean);
+  const epgMap = await IPTVDb.getEpgForChannels(activeAccount.id, epgIds);
+
+  const now = Math.floor(Date.now() / 1000);
+  const maxCatchupDays = channels.reduce((m, c) => Math.max(m, Number(c.catchupDays) || 0), 0);
+  const windowStart = now - maxCatchupDays * 86400;
+
+  // Window end = latest programme stop across channels, fallback now + 3h.
+  let windowEnd = now + 3 * 3600;
+  channels.forEach(c => {
+    const list = epgMap[c.epgChannelId] || [];
+    if (list.length) windowEnd = Math.max(windowEnd, list[list.length - 1].stop);
+  });
+
+  const totalMin = Math.max(1, (windowEnd - windowStart) / 60);
+  const trackWidth = Math.round(totalMin * EPG_PX_PER_MIN);
+
+  epgGridScroll.innerHTML = '';
+  epgGridScroll.style.setProperty('--epg-chan-w', EPG_CHAN_WIDTH + 'px');
+
+  // Timeline header (hourly ticks aligned to the hour).
+  const timeline = document.createElement('div');
+  timeline.className = 'epg-grid-timeline';
+  const corner = document.createElement('div');
+  corner.className = 'epg-corner';
+  timeline.appendChild(corner);
+
+  const firstHour = Math.ceil(windowStart / 3600) * 3600;
+  for (let t = firstHour; t < windowEnd; t += 3600) {
+    const tick = document.createElement('div');
+    tick.className = 'epg-tick';
+    tick.style.width = (60 * EPG_PX_PER_MIN) + 'px';
+    tick.style.marginLeft = (t === firstHour ? Math.round((firstHour - windowStart) / 60 * EPG_PX_PER_MIN) : 0) + 'px';
+    tick.textContent = epgFormatClock(t);
+    timeline.appendChild(tick);
+  }
+  epgGridScroll.appendChild(timeline);
+
+  // Now-line.
+  const nowLine = document.createElement('div');
+  nowLine.className = 'epg-now-line';
+  nowLine.style.left = (EPG_CHAN_WIDTH + Math.round((now - windowStart) / 60 * EPG_PX_PER_MIN)) + 'px';
+  epgGridScroll.appendChild(nowLine);
+
+  channels.forEach(channel => {
+    const row = document.createElement('div');
+    row.className = 'epg-grid-row';
+
+    const chanCell = document.createElement('div');
+    chanCell.className = 'epg-grid-channel';
+    const img = document.createElement('img');
+    img.src = channel.logo || 'assets/placeholder.png';
+    img.onerror = () => { img.src = 'assets/placeholder.png'; };
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = channel.name || 'Channel';
+    chanCell.appendChild(img);
+    chanCell.appendChild(nameSpan);
+    chanCell.addEventListener('click', () => playEpgLive(channel));
+    row.appendChild(chanCell);
+
+    const track = document.createElement('div');
+    track.className = 'epg-grid-track';
+    track.style.width = trackWidth + 'px';
+
+    const programmes = epgMap[channel.epgChannelId] || [];
+    if (!programmes.length) {
+      const ph = document.createElement('div');
+      ph.className = 'epg-prog';
+      ph.style.left = '4px';
+      ph.style.width = '180px';
+      ph.style.opacity = '0.5';
+      ph.textContent = 'Keine Programmdaten';
+      track.appendChild(ph);
+    }
+
+    programmes.forEach(p => {
+      if (p.stop <= windowStart || p.start >= windowEnd) return;
+      const left = Math.round((p.start - windowStart) / 60 * EPG_PX_PER_MIN);
+      const width = Math.max(2, Math.round((p.stop - p.start) / 60 * EPG_PX_PER_MIN) - 2);
+      const block = document.createElement('div');
+      block.className = 'epg-prog';
+      block.style.left = left + 'px';
+      block.style.width = width + 'px';
+
+      const isLive = p.start <= now && p.stop > now;
+      const isPast = p.stop <= now;
+      const isFuture = p.start > now;
+      const hasCatchup = channel.catchup === 1 && isPast && p.start >= (now - (Number(channel.catchupDays) || 0) * 86400);
+
+      if (isLive) block.classList.add('current');
+      else if (hasCatchup) block.classList.add('archive');
+      else if (isFuture) block.classList.add('future');
+
+      const title = document.createElement('div');
+      title.className = 'epg-prog-title';
+      title.textContent = p.title || '—';
+      const time = document.createElement('div');
+      time.className = 'epg-prog-time';
+      time.textContent = `${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`;
+      block.appendChild(title);
+      block.appendChild(time);
+
+      block.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleEpgProgramClick(channel, p, { isLive, hasCatchup, isFuture });
+      });
+      block.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        epgContextMenu(channel, p, { isLive, hasCatchup });
+      });
+
+      track.appendChild(block);
+    });
+
+    row.appendChild(track);
+    epgGridScroll.appendChild(row);
+  });
+
+  // Scroll so the now-line is roughly centered.
+  epgGridScroll.scrollLeft = Math.max(0, (now - windowStart) / 60 * EPG_PX_PER_MIN - 300);
+}
+
+// Adapt an XMLTV programme to the base64 shape playTimeshift/showContextMenu expect.
+function epgToListing(p) {
+  return {
+    start_timestamp: p.start,
+    stop_timestamp: p.stop,
+    title: btoa(unescape(encodeURIComponent(p.title || '')))
+  };
+}
+
+function playEpgLive(channel) {
+  const baseUrl = getAccountBaseUrl(activeAccount);
+  const url = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${channel.streamId}.ts`;
+  currentLiveChannelUrl = url;
+  currentLiveChannelName = channel.name;
+  currentLiveChannelGroup = channel.group || 'Live Channel';
+  currentLiveChannelLogo = channel.logo;
+  isTimeshiftActive = false;
+  localStorage.setItem('lastSelectedId_live', channel.streamId);
+  closeEpgGrid();
+  playChannel(channel.name, 'Live Channel', channel.logo, url);
+  loadEpgSidebar(channel.streamId, channel.catchup === 1);
+}
+
+function handleEpgProgramClick(channel, p, flags) {
+  currentLiveChannelName = channel.name;
+  currentLiveChannelLogo = channel.logo;
+  if (flags.isLive) {
+    playEpgLive(channel);
+  } else if (flags.hasCatchup) {
+    closeEpgGrid();
+    loadEpgSidebar(channel.streamId, channel.catchup === 1);
+    playTimeshift(epgToListing(p), channel.streamId);
+  } else {
+    showEpgDetails(channel, p);
+  }
+}
+
+function epgContextMenu(channel, p, flags) {
+  const baseUrl = getAccountBaseUrl(activeAccount);
+  if (flags.isLive) {
+    const url = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${channel.streamId}.ts`;
+    window.electronAPI.showContextMenu(channel.name, url);
+  } else if (flags.hasCatchup) {
+    const durationMins = Math.floor((p.stop - p.start) / 60) || 60;
+    const startFormatted = formatTimeshiftDate(p.start);
+    const url = `${baseUrl}/timeshift/${activeAccount.username}/${activeAccount.password}/${durationMins}/${startFormatted}/${channel.streamId}.ts`;
+    window.electronAPI.showContextMenu(`${channel.name} (Archiv: ${p.title})`, url);
+  }
+}
+
+function showEpgDetails(channel, p) {
+  const when = `${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`;
+  alert(`${channel.name}\n${p.title}\n${when}\n\n${p.desc || ''}`.trim());
 }
 
 function safeBase64Decode(str) {
