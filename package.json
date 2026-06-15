@@ -39,7 +39,8 @@
       "db.js",
       "epg-parse.js",
       "epg-worker.js",
-      "package.json"
+      "package.json",
+      "lib/**/*"
     ],
     "linux": {
       "target": [
