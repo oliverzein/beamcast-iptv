@@ -62,7 +62,6 @@
           <div id="playback-badge" class="playback-badge" style="display: none;"></div>
           <button id="btn-toggle-always-mpv" class="btn-sm btn-sm-secondary" style="display: flex; align-items: center; gap: 6px;">🎬 MPV Mode: OFF</button>
           <button id="btn-toggle-guide" class="btn-sm btn-sm-secondary" style="display: none; align-items: center; gap: 6px;">📅 TV Guide</button>
-          <button id="btn-sync-xtream" class="btn-sm btn-sm-primary" style="display: none; align-items: center; gap: 6px;">🔄 Sync Cache</button>
           <div class="status-indicator">
             <span class="pulse-dot green" id="status-dot"></span>
             <span id="status-text">Ready</span>
@@ -155,7 +154,7 @@
           <select id="epg-grid-category" class="epg-grid-category"></select>
           <span class="epg-grid-updated" id="epg-grid-updated"></span>
           <div class="epg-grid-toolbar-actions">
-            <button id="btn-epg-refresh" class="btn-sm btn-sm-primary">🔄 Refresh</button>
+            <button id="btn-epg-now" class="btn-sm btn-sm-secondary">▶ Now</button>
             <button id="btn-epg-close" class="btn-sm btn-sm-secondary">✕ Close</button>
           </div>
         </div>
@@ -210,6 +209,30 @@
     </div>
   </div>
 
+  <!-- Sync Dialog (hidden by default) -->
+  <div class="modal-overlay" id="sync-modal" style="display: none;">
+    <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>Synchronisierung</h2>
+        <button id="btn-close-sync" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="sync-account-name" style="color: var(--text-muted); margin-bottom: 16px;"></p>
+        <div class="sync-options" id="sync-options">
+          <label class="sync-checkbox"><input type="checkbox" id="sync-all" checked> <strong>Alles</strong></label>
+          <label class="sync-checkbox"><input type="checkbox" id="sync-live" checked> Live (Kategorien &amp; Kanäle)</label>
+          <label class="sync-checkbox"><input type="checkbox" id="sync-vod" checked> VOD (Movies &amp; Serien)</label>
+          <label class="sync-checkbox"><input type="checkbox" id="sync-epg" checked> EPG (TV Guide)</label>
+        </div>
+        <div class="sync-progress" id="sync-progress" style="display: none;">
+          <div class="sync-step" id="sync-step">Starte...</div>
+          <div class="sync-bar-track"><div class="sync-bar-fill" id="sync-bar-fill"></div></div>
+        </div>
+        <button id="btn-start-sync" class="btn btn-primary" style="width: 100%; margin-top: 16px;">Sync starten</button>
+      </div>
+    </div>
+  </div>
+
   <!-- M3U Playlist Modal Dialog (hidden by default) -->
   <div class="modal-overlay" id="m3u-modal" style="display: none;">
     <div class="modal-card">
@@ -242,6 +265,10 @@
   <script src="node_modules/mpegts.js/dist/mpegts.js"></script>
   <script src="db.js"></script>
   <script src="epg-parse.js"></script>
+  <script src="renderer-state.js"></script>
+  <script src="renderer-playback.js"></script>
+  <script src="renderer-xtream.js"></script>
+  <script src="renderer-epg.js"></script>
   <script src="renderer.js"></script>
 
   <!-- MPV status bar -->
