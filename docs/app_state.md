@@ -21,7 +21,7 @@ graph TD
 1. **User interaction**: Clicking a channel in the sidebar triggers playback.
 2. **Codec check**: [renderer.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/renderer.js) checks for native browser HEVC decoding support via `canPlayType`.
 3. **Proxy endpoint**: Renderer requests the proxy stream URL via the [preload.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/preload.js) IPC gateway, querying: `http://127.0.0.1:18080/stream?url=<STREAM_URL>&start=<SEEK_SECONDS>&hevc=<true|false>`.
-4. **Main process proxy**: [main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js) launches a node HTTP server, probes the stream using `ffprobe`, builds arguments with `buildFfmpegArgs()`, and spawns a native FFmpeg subprocess.
+4. **Main process proxy**: [main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js) initializes the proxy module in [lib/proxy.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/proxy.js), which launches a local HTTP server, probes the stream using `ffprobe`, builds arguments with `buildFfmpegArgs()`, and spawns a native FFmpeg subprocess.
 5. **Transcoding**: FFmpeg transcodes audio to AAC (`-c:a aac -b:a 192k -ac 2`) and either transcodes video to H.264 (`-c:v libx264`) or passes it through (`-c:v copy`) if HEVC is natively supported or compatible.
 6. **Playback**: FFmpeg pipes stdout to the local HTTP response. `mpegts.js` in the renderer demuxes the MPEG-TS stream into fragmented MP4 (fMP4) chunks, feeding them to the HTML5 `<video>` element.
 
@@ -39,7 +39,10 @@ All active files are placed in the project root: `/home/oliverzein/Dokumente/Dat
 
 ### 💻 Codebase Entrypoints
 - **[package.json](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/package.json)**: Project dependencies (`electron`, `mpegts.js`) and build configurations.
-- **[main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js)**: Main process. Configures BrowserWindow, HTTP proxy server, FFmpeg process spawning, and log forwarding.
+- **[main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js)**: Main process entry point. Sets up the main BrowserWindow, application menu, and orchestrates the modular backend services.
+- **[lib/proxy.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/proxy.js)**: HTTP streaming/API proxy server and FFmpeg/FFprobe transcoding core.
+- **[lib/external-player.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/external-player.js)**: External MPV player handling and context menu integration.
+- **[lib/stream-info.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/stream-info.js)**: Independent stream specifications details window.
 - **[preload.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/preload.js)**: Context isolation IPC gateway between main and renderer.
 - **[db.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/db.js)**: IndexedDB caching layer for Xtream Codes credentials, categories, and stream metadata.
 - **[index.html](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/index.html)**: Main HTML structure (sidebar list, filter options, custom overlays).
