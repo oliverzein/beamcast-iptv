@@ -201,61 +201,39 @@ const IPTVDb = {
 
   // --- Query Operations ---
 
-  getCategories(storeName, accountId) {
+  // Internal helper: open a readonly IDB transaction on storeName, query by accountId,
+  // and resolve with the full results array.
+  _idbQueryByAccountId(storeName, accountId) {
     return new Promise((resolve, reject) => {
-      console.log(`[DB getCategories] Querying ${storeName} for accountId:`, accountId);
       const transaction = this.db.transaction([storeName], 'readonly');
       const store = transaction.objectStore(storeName);
       const index = store.index('accountId');
       const request = index.getAll(IDBKeyRange.only(accountId));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  },
 
-      request.onsuccess = () => {
-        console.log(`[DB getCategories] Query success for ${storeName}. Found:`, request.result.length);
-        resolve(request.result);
-      };
-      request.onerror = (e) => {
-        console.error(`[DB getCategories] Query error for ${storeName}:`, e.target.error);
-        reject(e.target.error);
-      };
+  getCategories(storeName, accountId) {
+    console.log(`[DB getCategories] Querying ${storeName} for accountId:`, accountId);
+    return this._idbQueryByAccountId(storeName, accountId).then(result => {
+      console.log(`[DB getCategories] Query success for ${storeName}. Found:`, result.length);
+      return result;
     });
   },
 
   getStreamsByCategory(storeName, accountId, categoryId) {
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([storeName], 'readonly');
-      const store = transaction.objectStore(storeName);
-      const index = store.index('accountId');
-      const request = index.getAll(IDBKeyRange.only(accountId));
-
-      request.onsuccess = () => {
-        const items = request.result;
-        if (categoryId === 'all') {
-          resolve(items);
-        } else {
-          resolve(items.filter(item => String(item.categoryId) === String(categoryId)));
-        }
-      };
-      request.onerror = (e) => reject(e.target.error);
+    return this._idbQueryByAccountId(storeName, accountId).then(items => {
+      if (categoryId === 'all') return items;
+      return items.filter(item => String(item.categoryId) === String(categoryId));
     });
   },
 
   searchStreams(storeName, accountId, query) {
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([storeName], 'readonly');
-      const store = transaction.objectStore(storeName);
-      const index = store.index('accountId');
-      const request = index.getAll(IDBKeyRange.only(accountId));
-
-      request.onsuccess = () => {
-        const items = request.result;
-        if (!query) {
-          resolve(items);
-        } else {
-          const lowerQuery = query.toLowerCase();
-          resolve(items.filter(item => item.name && item.name.toLowerCase().includes(lowerQuery)));
-        }
-      };
-      request.onerror = (e) => reject(e.target.error);
+    return this._idbQueryByAccountId(storeName, accountId).then(items => {
+      if (!query) return items;
+      const lowerQuery = query.toLowerCase();
+      return items.filter(item => item.name && item.name.toLowerCase().includes(lowerQuery));
     });
   },
 

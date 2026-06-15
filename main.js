@@ -206,13 +206,8 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
 }
 
-// Build the arguments for the FFmpeg process
-function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHEVC) {
-  const ffmpegArgs = ['-loglevel', 'warning'];
-
-  const isTimeshift = targetStreamUrl.toLowerCase().includes('/timeshift/');
-
-  // Add network stream optimization parameters BEFORE -i
+// Push network reconnect flags (before -i).
+function buildReconnectArgs(ffmpegArgs, isTimeshift) {
   ffmpegArgs.push('-timeout', '5000000'); // 5 seconds connection timeout
   if (isTimeshift) {
     // Timeshift archives are finite: EOF means end of program.
@@ -230,7 +225,10 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
       '-reconnect_delay_max', '5'     // Max delay before reconnecting (5s)
     );
   }
+}
 
+// Push probe/analyze size limits and timeshift-specific rate control.
+function buildProbeArgs(ffmpegArgs, isLive, isTimeshift) {
   if (isLive || isTimeshift) {
     ffmpegArgs.push(
       '-probesize', '1000000',        // Limit probe size to 1MB for instant start on live TV/Timeshift
@@ -251,33 +249,13 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
       '-analyzeduration', '5000000'   // 5s analyzeduration for VOD
     );
   }
+}
 
-  // Always generate PTS and discard corrupt packets to handle stream discontinuities/sync issues
-  if (isTimeshift) {
-    ffmpegArgs.push('-fflags', '+genpts+igndts+discardcorrupt');
-  } else {
-    ffmpegArgs.push('-fflags', '+genpts+discardcorrupt');
-  }
-
-  if (start) {
-    ffmpegArgs.push('-ss', start.toString()); // Seek input (must be before -i)
-  }
-  ffmpegArgs.push(
-    '-i', targetStreamUrl,
-    '-map', '0:v?',          // Map first video stream optionally
-    '-map', '0:a?',          // Map first audio stream optionally
-    '-sn',                   // Disable subtitle streams to prevent parsing failures
-    '-dn'                    // Disable data streams
-  );
-
-  if (isLive || isTimeshift) {
-    ffmpegArgs.push('-avoid_negative_ts', 'make_zero');
-  }
-
-  // Check if video needs transcoding
+// Determine whether video transcoding is needed, push video codec args, and return needTranscoding.
+function buildVideoArgs(ffmpegArgs, codec, isLive, isTimeshift, targetStreamUrl, clientSupportsHEVC) {
   const unsupportedCodecs = ['hevc', 'h265', 'mpeg2video', 'vc1', 'mpeg4', 'msmpeg4v3', 'wmv3'];
   let needTranscoding = unsupportedCodecs.includes(codec.toLowerCase());
-  
+
   // If codec detection failed but it's an MKV file on VOD, default to H.264 transcode for safety
   if (codec === 'unknown' && !isLive && targetStreamUrl.toLowerCase().split('?')[0].endsWith('.mkv')) {
     console.warn(`[Proxy] Codec detection failed on VOD MKV stream, defaulting to H.264 transcode for safety.`);
@@ -309,16 +287,53 @@ function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHE
     console.log(`Copying video stream (codec: ${codec})`);
     ffmpegArgs.push('-c:v', 'copy');
   }
+  return needTranscoding;
+}
 
+// Push audio codec args.
+function buildAudioArgs(ffmpegArgs, isLive, isTimeshift) {
   ffmpegArgs.push(
     '-c:a', 'aac',           // Transcode audio to AAC
     '-b:a', '192k',          // Audio bitrate
     '-ac', '2'               // Downmix to stereo
   );
-
   if (isLive || isTimeshift) {
     ffmpegArgs.push('-af', 'aresample=async=1'); // Force audio resampling to sync with video frames
   }
+}
+
+// Build the arguments for the FFmpeg process
+function buildFfmpegArgs(targetStreamUrl, isLive, codec, start, clientSupportsHEVC) {
+  const ffmpegArgs = ['-loglevel', 'warning'];
+  const isTimeshift = targetStreamUrl.toLowerCase().includes('/timeshift/');
+
+  buildReconnectArgs(ffmpegArgs, isTimeshift);
+  buildProbeArgs(ffmpegArgs, isLive, isTimeshift);
+
+  // Always generate PTS and discard corrupt packets to handle stream discontinuities/sync issues
+  if (isTimeshift) {
+    ffmpegArgs.push('-fflags', '+genpts+igndts+discardcorrupt');
+  } else {
+    ffmpegArgs.push('-fflags', '+genpts+discardcorrupt');
+  }
+
+  if (start) {
+    ffmpegArgs.push('-ss', start.toString()); // Seek input (must be before -i)
+  }
+  ffmpegArgs.push(
+    '-i', targetStreamUrl,
+    '-map', '0:v?',          // Map first video stream optionally
+    '-map', '0:a?',          // Map first audio stream optionally
+    '-sn',                   // Disable subtitle streams to prevent parsing failures
+    '-dn'                    // Disable data streams
+  );
+
+  if (isLive || isTimeshift) {
+    ffmpegArgs.push('-avoid_negative_ts', 'make_zero');
+  }
+
+  const needTranscoding = buildVideoArgs(ffmpegArgs, codec, isLive, isTimeshift, targetStreamUrl, clientSupportsHEVC);
+  buildAudioArgs(ffmpegArgs, isLive, isTimeshift);
 
   ffmpegArgs.push(
     '-f', 'mpegts',          // MPEG-TS container
@@ -428,6 +443,26 @@ function handleStreamRequest(req, res, reqUrl) {
   });
 }
 
+// Proxy a fetch to targetUrl and write the response to res.
+// successHeaders: object of additional headers on 200 (Access-Control-Allow-Origin is always added).
+// errCode: HTTP status code on failure.
+function proxyFetch(targetUrl, res, successHeaders, errCode) {
+  fetch(targetUrl)
+    .then(response => {
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return response.text();
+    })
+    .then(body => {
+      res.writeHead(200, { 'Access-Control-Allow-Origin': '*', ...successHeaders });
+      res.end(body);
+    })
+    .catch(err => {
+      console.error(`[proxyFetch] ${targetUrl}: ${err.message}`);
+      res.writeHead(errCode, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Proxy fetch failed', details: err.message }));
+    });
+}
+
 // Handle Xtream Codes API requests forwarding
 function handleXtreamApiRequest(req, res, reqUrl) {
   const { host, username, password, action, ...extraParams } = reqUrl.query;
@@ -449,23 +484,7 @@ function handleXtreamApiRequest(req, res, reqUrl) {
 
   console.log(`Forwarding Xtream Codes API request: ${targetUrl}`);
 
-  fetch(targetUrl)
-    .then(response => {
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return response.text();
-    })
-    .then(body => {
-      res.writeHead(200, { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      });
-      res.end(body);
-    })
-    .catch(err => {
-      console.error('Xtream API Proxy Error:', err);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to fetch from Xtream server', details: err.message }));
-    });
+  proxyFetch(targetUrl, res, { 'Content-Type': 'application/json' }, 500);
 }
 
 // Handle Xtream Codes XMLTV (full EPG dump) forwarding
@@ -483,23 +502,7 @@ function handleXtreamXmltvRequest(req, res, reqUrl) {
 
   console.log(`Forwarding Xtream XMLTV request: ${targetUrl}`);
 
-  fetch(targetUrl)
-    .then(response => {
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return response.text();
-    })
-    .then(body => {
-      res.writeHead(200, {
-        'Content-Type': 'application/xml',
-        'Access-Control-Allow-Origin': '*'
-      });
-      res.end(body);
-    })
-    .catch(err => {
-      console.error('Xtream XMLTV Proxy Error:', err);
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Failed to fetch XMLTV from Xtream server', details: err.message }));
-    });
+  proxyFetch(targetUrl, res, { 'Content-Type': 'application/xml' }, 502);
 }
 
 // Start local HTTP transcoding proxy server

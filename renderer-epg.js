@@ -149,6 +149,120 @@ function epgFormatClock(epochSec) {
   return new Date(epochSec * 1000).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+// Build the timeline header row (hourly ticks) and sticky date label.
+// Returns the timeline div and date label div (both already created, not yet appended).
+// Also returns updateDateLabel so the caller can call it once and bind to scroll.
+function buildEpgTimeline(windowStart, windowEnd) {
+  const timeline = document.createElement('div');
+  timeline.className = 'epg-grid-timeline';
+  const corner = document.createElement('div');
+  corner.className = 'epg-corner';
+  timeline.appendChild(corner);
+
+  const firstHour = Math.ceil(windowStart / 3600) * 3600;
+  for (let t = firstHour; t < windowEnd; t += 3600) {
+    const tick = document.createElement('div');
+    tick.className = 'epg-tick';
+    tick.style.width = (60 * EPG_PX_PER_MIN) + 'px';
+    tick.style.marginLeft = (t === firstHour ? Math.round((firstHour - windowStart) / 60 * EPG_PX_PER_MIN) : 0) + 'px';
+    tick.textContent = epgFormatClock(t);
+    timeline.appendChild(tick);
+  }
+
+  const dateLabel = document.createElement('div');
+  dateLabel.className = 'epg-date-label';
+
+  const updateDateLabel = () => {
+    const scrollSec = windowStart + (epgGridScroll.scrollLeft / EPG_PX_PER_MIN) * 60;
+    const d = new Date(scrollSec * 1000);
+    dateLabel.textContent = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  return { timeline, dateLabel, updateDateLabel };
+}
+
+// Build one channel row (sticky channel cell + programme track). Returns the row div.
+function buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth, now) {
+  const row = document.createElement('div');
+  row.className = 'epg-grid-row';
+
+  const chanCell = document.createElement('div');
+  chanCell.className = 'epg-grid-channel';
+  const img = document.createElement('img');
+  img.src = channel.logo || 'assets/placeholder.png';
+  img.onerror = () => { img.src = 'assets/placeholder.png'; };
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = channel.name || 'Channel';
+  chanCell.appendChild(img);
+  chanCell.appendChild(nameSpan);
+  if (channel.catchup === 1) {
+    const badge = document.createElement('span');
+    badge.className = 'epg-grid-catchup';
+    badge.textContent = '🕒';
+    badge.title = 'Timeshift / Catch-up verfügbar';
+    chanCell.appendChild(badge);
+  }
+  chanCell.addEventListener('click', () => playEpgLive(channel));
+  row.appendChild(chanCell);
+
+  const track = document.createElement('div');
+  track.className = 'epg-grid-track';
+  track.style.width = trackWidth + 'px';
+
+  const programmes = epgMap[channel.epgChannelId] || [];
+  if (!programmes.length) {
+    const ph = document.createElement('div');
+    ph.className = 'epg-prog';
+    ph.style.left = '4px';
+    ph.style.width = '180px';
+    ph.style.opacity = '0.5';
+    ph.textContent = 'Keine Programmdaten';
+    track.appendChild(ph);
+  }
+
+  programmes.forEach(p => {
+    if (p.stop <= windowStart || p.start >= windowEnd) return;
+    const left = Math.round((p.start - windowStart) / 60 * EPG_PX_PER_MIN);
+    const width = Math.max(2, Math.round((p.stop - p.start) / 60 * EPG_PX_PER_MIN) - 2);
+    const block = document.createElement('div');
+    block.className = 'epg-prog';
+    block.style.left = left + 'px';
+    block.style.width = width + 'px';
+
+    const isLive = p.start <= now && p.stop > now;
+    const isPast = p.stop <= now;
+    const isFuture = p.start > now;
+    const hasCatchup = channel.catchup === 1 && isPast && p.start >= (now - (Number(channel.catchupDays) || 0) * 86400);
+
+    if (isLive) block.classList.add('current');
+    else if (hasCatchup) block.classList.add('archive');
+    else if (isFuture) block.classList.add('future');
+
+    const title = document.createElement('div');
+    title.className = 'epg-prog-title';
+    title.textContent = p.title || '—';
+    const time = document.createElement('div');
+    time.className = 'epg-prog-time';
+    time.textContent = `${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`;
+    block.appendChild(title);
+    block.appendChild(time);
+
+    block.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handleEpgProgramClick(channel, p, { isLive, hasCatchup, isFuture });
+    });
+    block.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      epgContextMenu(channel, p, { isLive, hasCatchup });
+    });
+
+    track.appendChild(block);
+  });
+
+  row.appendChild(track);
+  return row;
+}
+
 async function renderEpgGrid() {
   if (!epgGridScroll) return;
   epgGridScroll.innerHTML = '<div class="epg-grid-empty">Lade Programmübersicht...</div>';
@@ -199,34 +313,9 @@ async function renderEpgGrid() {
   epgGridScroll.innerHTML = '';
   epgGridScroll.style.setProperty('--epg-chan-w', EPG_CHAN_WIDTH + 'px');
 
-  // Timeline header (hourly ticks aligned to the hour).
-  const timeline = document.createElement('div');
-  timeline.className = 'epg-grid-timeline';
-  const corner = document.createElement('div');
-  corner.className = 'epg-corner';
-  timeline.appendChild(corner);
-
-  const firstHour = Math.ceil(windowStart / 3600) * 3600;
-  for (let t = firstHour; t < windowEnd; t += 3600) {
-    const tick = document.createElement('div');
-    tick.className = 'epg-tick';
-    tick.style.width = (60 * EPG_PX_PER_MIN) + 'px';
-    tick.style.marginLeft = (t === firstHour ? Math.round((firstHour - windowStart) / 60 * EPG_PX_PER_MIN) : 0) + 'px';
-    tick.textContent = epgFormatClock(t);
-    timeline.appendChild(tick);
-  }
+  const { timeline, dateLabel, updateDateLabel } = buildEpgTimeline(windowStart, windowEnd);
   epgGridScroll.appendChild(timeline);
-
-  // Sticky date indicator — updates on horizontal scroll.
-  const dateLabel = document.createElement('div');
-  dateLabel.className = 'epg-date-label';
   epgGridScroll.appendChild(dateLabel);
-
-  const updateDateLabel = () => {
-    const scrollSec = windowStart + (epgGridScroll.scrollLeft / EPG_PX_PER_MIN) * 60;
-    const d = new Date(scrollSec * 1000);
-    dateLabel.textContent = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
   epgGridScroll.addEventListener('scroll', updateDateLabel);
   updateDateLabel();
 
@@ -248,84 +337,7 @@ async function renderEpgGrid() {
   epgNowLineTimer = setInterval(updateNowMarker, 30000);
 
   channels.forEach(channel => {
-    const row = document.createElement('div');
-    row.className = 'epg-grid-row';
-
-    const chanCell = document.createElement('div');
-    chanCell.className = 'epg-grid-channel';
-    const img = document.createElement('img');
-    img.src = channel.logo || 'assets/placeholder.png';
-    img.onerror = () => { img.src = 'assets/placeholder.png'; };
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = channel.name || 'Channel';
-    chanCell.appendChild(img);
-    chanCell.appendChild(nameSpan);
-    if (channel.catchup === 1) {
-      const badge = document.createElement('span');
-      badge.className = 'epg-grid-catchup';
-      badge.textContent = '🕒';
-      badge.title = 'Timeshift / Catch-up verfügbar';
-      chanCell.appendChild(badge);
-    }
-    chanCell.addEventListener('click', () => playEpgLive(channel));
-    row.appendChild(chanCell);
-
-    const track = document.createElement('div');
-    track.className = 'epg-grid-track';
-    track.style.width = trackWidth + 'px';
-
-    const programmes = epgMap[channel.epgChannelId] || [];
-    if (!programmes.length) {
-      const ph = document.createElement('div');
-      ph.className = 'epg-prog';
-      ph.style.left = '4px';
-      ph.style.width = '180px';
-      ph.style.opacity = '0.5';
-      ph.textContent = 'Keine Programmdaten';
-      track.appendChild(ph);
-    }
-
-    programmes.forEach(p => {
-      if (p.stop <= windowStart || p.start >= windowEnd) return;
-      const left = Math.round((p.start - windowStart) / 60 * EPG_PX_PER_MIN);
-      const width = Math.max(2, Math.round((p.stop - p.start) / 60 * EPG_PX_PER_MIN) - 2);
-      const block = document.createElement('div');
-      block.className = 'epg-prog';
-      block.style.left = left + 'px';
-      block.style.width = width + 'px';
-
-      const isLive = p.start <= now && p.stop > now;
-      const isPast = p.stop <= now;
-      const isFuture = p.start > now;
-      const hasCatchup = channel.catchup === 1 && isPast && p.start >= (now - (Number(channel.catchupDays) || 0) * 86400);
-
-      if (isLive) block.classList.add('current');
-      else if (hasCatchup) block.classList.add('archive');
-      else if (isFuture) block.classList.add('future');
-
-      const title = document.createElement('div');
-      title.className = 'epg-prog-title';
-      title.textContent = p.title || '—';
-      const time = document.createElement('div');
-      time.className = 'epg-prog-time';
-      time.textContent = `${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`;
-      block.appendChild(title);
-      block.appendChild(time);
-
-      block.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleEpgProgramClick(channel, p, { isLive, hasCatchup, isFuture });
-      });
-      block.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        epgContextMenu(channel, p, { isLive, hasCatchup });
-      });
-
-      track.appendChild(block);
-    });
-
-    row.appendChild(track);
-    epgGridScroll.appendChild(row);
+    epgGridScroll.appendChild(buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth, now));
   });
 
   // Set now-line height to span full scrollable content.
