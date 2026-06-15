@@ -245,22 +245,23 @@ select option {
   gap: 8px;
 }
 
-/* Custom Scrollbar for channel list */
-.channel-list::-webkit-scrollbar {
-  width: 6px;
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
 }
-
-.channel-list::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
+  background: rgba(7, 9, 14, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 242, 254, 0.3);
+}
+::-webkit-scrollbar-corner {
   background: transparent;
-}
-
-.channel-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.channel-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
 }
 
 .channel-list li {
@@ -1259,7 +1260,12 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 .app-container.mpv-active.guide-open .player-frame {
-  padding: 0;
+  display: none;
+}
+.app-container.mpv-active.guide-open .main-content {
+  display: grid;
+  grid-template-rows: 80px 1fr;
+  min-height: 0;
 }
 
 /* Floating Status Bar */
@@ -1356,10 +1362,23 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .epg-grid-toolbar h3 { font-size: 16px; color: var(--accent-cyan); }
+.epg-grid-category {
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  max-width: 220px;
+}
+.epg-grid-category option {
+  background: #1a1e2a;
+  color: #e0e0e0;
+}
 .epg-grid-updated { font-size: 12px; color: var(--text-muted); }
 .epg-grid-toolbar-actions { margin-left: auto; display: flex; gap: 8px; }
 
-.epg-grid-scroll { flex: 1; overflow: auto; position: relative; }
+.epg-grid-scroll { flex: 1; overflow: auto; position: relative; cursor: grab; }
 
 .epg-grid-timeline {
   position: sticky;
@@ -1426,6 +1445,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 .epg-grid-channel img { width: 32px; height: 32px; object-fit: contain; }
 .epg-grid-channel span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.epg-grid-catchup { font-size: 14px; margin-left: auto; flex-shrink: 0; }
 
 .epg-grid-track { position: relative; flex: 0 0 auto; }
 .epg-prog {

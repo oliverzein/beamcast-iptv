@@ -75,6 +75,7 @@ const btnEpgClose = document.getElementById('btn-epg-close');
 const epgGridContainer = document.getElementById('epg-grid-container');
 const epgGridScroll = document.getElementById('epg-grid-scroll');
 const epgGridUpdated = document.getElementById('epg-grid-updated');
+const epgGridCategory = document.getElementById('epg-grid-category');
 const accountFormTitle = document.getElementById('account-form-title');
 const btnSaveAccount = document.getElementById('btn-save-account');
 const btnCancelEdit = document.getElementById('btn-cancel-edit');
@@ -328,6 +329,10 @@ function setupEventListeners() {
     else openEpgGrid();
   });
   if (btnEpgClose) btnEpgClose.addEventListener('click', closeEpgGrid);
+  if (epgGridCategory) epgGridCategory.addEventListener('change', () => {
+    localStorage.setItem('epgGridCategory', epgGridCategory.value);
+    renderEpgGrid();
+  });
   if (btnEpgRefresh) btnEpgRefresh.addEventListener('click', async () => {
     btnEpgRefresh.disabled = true;
     const prev = btnEpgRefresh.textContent;
@@ -1846,19 +1851,67 @@ function parseXmltvAsync(xml) {
 
 const EPG_PX_PER_MIN = 5;
 const EPG_CHAN_WIDTH = 200;
+let epgNowLineTimer = null;
 
 function openEpgGrid() {
   if (activePlaylistType !== 'xtream' || !activeAccount) return;
   appContainer.classList.add('guide-open');
   if (epgGridContainer) epgGridContainer.style.display = 'flex';
   localStorage.setItem('epgView', 'grid');
-  renderEpgGrid();
+  populateEpgGridCategory().finally(() => renderEpgGrid());
+}
+
+async function populateEpgGridCategory() {
+  if (!epgGridCategory || !activeAccount) return;
+  try {
+    const cats = (await IPTVDb.getCategories('live_categories', activeAccount.id)) || [];
+    const prev = epgGridCategory.value;
+    epgGridCategory.innerHTML = '<option value="all">Alle Kategorien</option>';
+    cats.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.categoryId;
+      opt.textContent = c.categoryName;
+      epgGridCategory.appendChild(opt);
+    });
+    // Restore previous selection if still valid
+    const lastCat = prev || localStorage.getItem('epgGridCategory') || 'all';
+    if (Array.from(epgGridCategory.options).some(o => o.value === lastCat)) {
+      epgGridCategory.value = lastCat;
+    }
+  } catch (e) {
+    console.warn('[EPG] populateEpgGridCategory error:', e);
+  }
 }
 
 function closeEpgGrid() {
   appContainer.classList.remove('guide-open');
   if (epgGridContainer) epgGridContainer.style.display = 'none';
   localStorage.setItem('epgView', 'none');
+  if (epgNowLineTimer) { clearInterval(epgNowLineTimer); epgNowLineTimer = null; }
+}
+
+// Drag-to-scroll for EPG grid.
+if (epgGridScroll) {
+  let isDragging = false, startX, startY, scrollL, scrollT;
+  epgGridScroll.addEventListener('mousedown', (e) => {
+    // Ignore clicks on programme blocks (they have their own click handlers).
+    if (e.target.closest('.epg-prog') || e.target.closest('.epg-grid-channel')) return;
+    isDragging = true;
+    startX = e.clientX; startY = e.clientY;
+    scrollL = epgGridScroll.scrollLeft; scrollT = epgGridScroll.scrollTop;
+    epgGridScroll.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    epgGridScroll.scrollLeft = scrollL - (e.clientX - startX);
+    epgGridScroll.scrollTop = scrollT - (e.clientY - startY);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    epgGridScroll.style.cursor = '';
+  });
 }
 
 function epgFormatClock(epochSec) {
@@ -1869,8 +1922,15 @@ async function renderEpgGrid() {
   if (!epgGridScroll) return;
   epgGridScroll.innerHTML = '<div class="epg-grid-empty">Lade Programmübersicht...</div>';
 
-  // Channels of the current live category (reuse the sidebar's category filter).
-  const categoryId = (activeTab === 'live') ? (categoryFilter.value || 'all') : 'all';
+  // Channels of the selected grid category.
+  const categoryId = (epgGridCategory && epgGridCategory.value && epgGridCategory.value !== 'all')
+    ? epgGridCategory.value : null;
+
+  if (!categoryId) {
+    epgGridScroll.innerHTML = '<div class="epg-grid-empty">Bitte eine Kategorie auswählen.</div>';
+    return;
+  }
+
   const channels = (await IPTVDb.getStreamsByCategory('live_streams', activeAccount.id, categoryId)) || [];
 
   const meta = await IPTVDb.getEpgMeta(activeAccount.id);
@@ -1938,11 +1998,22 @@ async function renderEpgGrid() {
   epgGridScroll.addEventListener('scroll', updateDateLabel);
   updateDateLabel();
 
-  // Now-line.
+  // Now-line + current-programme highlight (updates every 30s).
   const nowLine = document.createElement('div');
   nowLine.className = 'epg-now-line';
-  nowLine.style.left = (EPG_CHAN_WIDTH + Math.round((now - windowStart) / 60 * EPG_PX_PER_MIN)) + 'px';
+  const updateNowMarker = () => {
+    const n = Math.floor(Date.now() / 1000);
+    nowLine.style.left = (EPG_CHAN_WIDTH + Math.round((n - windowStart) / 60 * EPG_PX_PER_MIN)) + 'px';
+    // Update programme block highlights.
+    epgGridScroll.querySelectorAll('.epg-prog[data-start]').forEach(el => {
+      const s = Number(el.dataset.start), e = Number(el.dataset.stop);
+      el.classList.toggle('current', s <= n && e > n);
+    });
+  };
+  updateNowMarker();
   epgGridScroll.appendChild(nowLine);
+  if (epgNowLineTimer) clearInterval(epgNowLineTimer);
+  epgNowLineTimer = setInterval(updateNowMarker, 30000);
 
   channels.forEach(channel => {
     const row = document.createElement('div');
@@ -1957,6 +2028,13 @@ async function renderEpgGrid() {
     nameSpan.textContent = channel.name || 'Channel';
     chanCell.appendChild(img);
     chanCell.appendChild(nameSpan);
+    if (channel.catchup === 1) {
+      const badge = document.createElement('span');
+      badge.className = 'epg-grid-catchup';
+      badge.textContent = '🕒';
+      badge.title = 'Timeshift / Catch-up verfügbar';
+      chanCell.appendChild(badge);
+    }
     chanCell.addEventListener('click', () => playEpgLive(channel));
     row.appendChild(chanCell);
 
