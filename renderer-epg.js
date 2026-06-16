@@ -260,6 +260,7 @@ function buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth,
 
   programmes.forEach(p => {
     if (p.stop <= windowStart || p.start >= windowEnd) return;
+    if (p.stop <= now && channel.catchup !== 1) return; // Skip historic data for non-timeshift channels
     const left = Math.round((p.start - windowStart) / 60 * EPG_PX_PER_MIN);
     const width = Math.max(2, Math.round((p.stop - p.start) / 60 * EPG_PX_PER_MIN) - 2);
     const block = document.createElement('div');
@@ -337,7 +338,10 @@ async function renderEpgGrid() {
   let windowStart = now;
   let windowEnd = now + 3 * 3600;
   channels.forEach(c => {
-    const list = epgMap[c.epgChannelId] || [];
+    let list = epgMap[c.epgChannelId] || [];
+    if (c.catchup !== 1) {
+      list = list.filter(p => p.stop > now);
+    }
     if (list.length) {
       windowStart = Math.min(windowStart, list[0].start);
       windowEnd = Math.max(windowEnd, list[list.length - 1].stop);
