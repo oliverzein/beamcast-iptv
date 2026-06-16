@@ -89,3 +89,15 @@ npm run dist
 # Trigger automated build and upload to GitHub Releases
 ./scripts/deploy.sh --release
 ```
+
+---
+
+## 📅 EPG History Workaround (Timeshift / Catch-up)
+
+Because most IPTV providers restrict their bulk XMLTV feed (`xmltv.php`) to the current day and future days (ignoring `prev_days` query parameters to save bandwidth), the EPG Grid view cannot initially display program blocks for previous days.
+
+To work around this limitation and display historical catch-up program blocks in the Grid view:
+1. **Load the channel once in the Column (Sidebar) view**: Selecting a channel in the sidebar triggers a direct `get_simple_data_table` Xtream API query for that specific stream. The server returns the full 7-day past catch-up EPG.
+2. **Automatic Database Merging**: The application automatically merges these fetched catch-up program listings into IndexedDB.
+3. **EPG Grid Integration**: Once cached, these past programs populate the EPG Grid timeline and are fully styled as Timeshift (`archive`) blocks, allowing you to click and play them directly from the grid.
+
