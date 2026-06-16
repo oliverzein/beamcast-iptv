@@ -8,16 +8,16 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 1. AppImage suchen
 echo "Suche AppImage..."
 # 1.1 In repo dist-Verzeichnis
-APPIMAGE_PATH=$(find "$REPO_ROOT/dist" -maxdepth 1 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | head -n 1)
+APPIMAGE_PATH=$(find "$REPO_ROOT/dist" -maxdepth 1 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | sort -V | tail -n 1)
 
 # 1.2 Im aktuellen Verzeichnis
 if [ -z "$APPIMAGE_PATH" ]; then
-  APPIMAGE_PATH=$(find . -maxdepth 2 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | head -n 1)
+  APPIMAGE_PATH=$(find . -maxdepth 2 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | sort -V | tail -n 1)
 fi
 
 # 1.3 Im Skript-Verzeichnis
 if [ -z "$APPIMAGE_PATH" ]; then
-  APPIMAGE_PATH=$(find "$SCRIPT_DIR" -maxdepth 1 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | head -n 1)
+  APPIMAGE_PATH=$(find "$SCRIPT_DIR" -maxdepth 1 -name "Beamcast*IPTV*.AppImage" 2>/dev/null | sort -V | tail -n 1)
 fi
 
 # 1.4 Wenn nicht gefunden, von GitHub Release herunterladen

@@ -136,7 +136,7 @@ async function populateEpgGridCategory() {
     const cats = (await IPTVDb.getCategories('live_categories', activeAccount.id)) || [];
     const prev = epgGridCategory.value;
     epgGridCategory.innerHTML = '<option value="all">Alle Kategorien</option>';
-    cats.forEach(c => {
+    cats.sort((a, b) => (a.categoryName || '').localeCompare(b.categoryName || '')).forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.categoryId;
       opt.textContent = c.categoryName;
@@ -223,6 +223,7 @@ function buildEpgTimeline(windowStart, windowEnd) {
 function buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth, now) {
   const row = document.createElement('div');
   row.className = 'epg-grid-row';
+  row.dataset.streamId = channel.streamId;
 
   const chanCell = document.createElement('div');
   chanCell.className = 'epg-grid-channel';
@@ -387,6 +388,18 @@ async function renderEpgGrid() {
 
   // Scroll so the now-line is roughly centered.
   epgGridScroll.scrollLeft = Math.max(0, (now - windowStart) / 60 * EPG_PX_PER_MIN - 300);
+
+  // Vertically scroll and highlight target channel row
+  const lastId = localStorage.getItem('lastSelectedId_live');
+  if (lastId) {
+    const targetRow = epgGridScroll.querySelector(`[data-stream-id="${lastId}"]`);
+    if (targetRow) {
+      targetRow.classList.add('active');
+      setTimeout(() => {
+        epgGridScroll.scrollTop = targetRow.offsetTop - (epgGridScroll.clientHeight / 2);
+      }, 200);
+    }
+  }
 }
 
 // Adapt an XMLTV programme to the base64 shape playTimeshift/showContextMenu expect.

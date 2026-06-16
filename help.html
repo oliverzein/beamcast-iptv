@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Beamcast IPTV Help & Optimization</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      padding: 24px;
+      overflow-y: auto;
+      height: 100vh;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-family);
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      padding-bottom: 40px;
+    }
+    .header {
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+      margin-bottom: 8px;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .header h1 span {
+      color: var(--accent-cyan);
+    }
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .section {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .text-block {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-main);
+    }
+    .text-block p {
+      margin-bottom: 12px;
+    }
+    .text-block p:last-child {
+      margin-bottom: 0;
+    }
+    .text-block strong {
+      color: var(--accent-cyan);
+    }
+    .code-container {
+      position: relative;
+      margin-top: 14px;
+      margin-bottom: 14px;
+    }
+    pre {
+      background: rgba(7, 9, 14, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 16px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      color: #a6accd;
+      overflow-x: auto;
+      line-height: 1.5;
+      max-height: 300px;
+      user-select: text;
+    }
+    .btn-copy {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(22, 28, 45, 0.8);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .btn-copy:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      box-shadow: 0 0 8px rgba(0, 242, 254, 0.2);
+    }
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      row-gap: 10px;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .shortcut-key {
+      font-family: monospace;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      padding: 2px 6px;
+      border-radius: 4px;
+      width: fit-content;
+      font-weight: bold;
+      color: var(--accent-cyan);
+    }
+    .shortcut-desc {
+      display: flex;
+      align-items: center;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Beamcast<span>IPTV</span> Help & Optimization</h1>
+      <div class="subtitle">Quick guide, controls, and external player configuration.</div>
+    </div>
+
+    <!-- Section: MPV Player Configuration -->
+    <div class="section">
+      <div class="section-title">🎬 MPV Player Optimized Settings</div>
+      <div class="text-block">
+        <p>For zero-lag hardware decoding and stable high-bitrate streaming (e.g. 4K HEVC), we recommend using the external <strong>MPV Player</strong>.</p>
+        <p>To optimize MPV for IPTV streaming, copy the configuration below and append it to your <code>mpv.conf</code> file:</p>
+        <ul>
+          <li><strong>Linux:</strong> <code>~/.config/mpv/mpv.conf</code></li>
+          <li><strong>Windows:</strong> <code>%APPDATA%/mpv/mpv.conf</code></li>
+        </ul>
+      </div>
+      <div class="code-container">
+        <button id="btn-copy-settings" class="btn-copy">Copy Settings</button>
+        <pre id="mpv-settings-code"># ====================================================================
+# --- Core IPTV Buffering ---
+# ====================================================================
+cache=yes
+demuxer-seekable-cache=yes
+# Allocate 1GB for historical timeshifting (backwards seek)
+demuxer-max-back-bytes=1000M
+# Allocate 1GB for forward buffering (prevents stalling)
+demuxer-max-bytes=1000M
+# Force mpv to cache up to 2 hours ahead if data is available
+demuxer-readahead-secs=7200
+
+# ====================================================================
+# --- Stream Stability & Network ---
+# ====================================================================
+# Prevent mpv from closing the stream if the server hesitates
+stream-buffer-size=4MiB
+# Set a long timeout for network reconnects (in seconds)
+network-timeout=60
+# Automatically attempt to reconnect if the network drops
+rtsp-transport=tcp
+# Force the demuxer to thread to prevent UI freezing
+demuxer-thread=yes
+
+# ====================================================================
+# --- Snappy Seeking & HEVC Video Decoder Fixes ---
+# ====================================================================
+# Use fast, keyframe-based seeking instead of precise, slow seeking
+hr-seek=no
+
+# Allow aggressive frame dropping during a seek to force immediate AV sync
+hr-seek-framedrop=yes
+
+# Offload HEVC decoding to the GPU to jump past broken references instantly
+hwdec=auto-safe
+
+# Prioritize decoding speed over strict error correction
+vd-lavc-fast=yes
+
+# Utilize all available CPU threads as a backup software decoder fallback
+vd-lavc-threads=0
+
+# prevent exact seeking when using the on screen position bar with the mouse
+script-opts=osc-seekbarkeyframes=yes</pre>
+      </div>
+    </div>
+
+    <!-- Section: Timeshift / Catch-up -->
+    <div class="section">
+      <div class="section-title">📅 EPG Timeshift & Catch-Up</div>
+      <div class="text-block">
+        <p><strong>Timeshift (Catch-Up):</strong> Allows playing past programs directly from the TV guide. Program blocks that support timeshift are marked with an archive icon or direct badge in the guide.</p>
+        <p><strong>Automatic EPG Sync:</strong> When you select a channel in the sidebar list, the app retrieves its full 7-day past catch-up schedule from the IPTV provider and stores it locally in the database. This allows the EPG Grid to backpopulate with historical data.</p>
+      </div>
+    </div>
+
+    <!-- Section: Transcoding proxy -->
+    <div class="section">
+      <div class="section-title">⚡ Audio Transcoding Proxy</div>
+      <div class="text-block">
+        <p>Chromium does not natively support <strong>AC3 / E-AC3 (Dolby Digital)</strong> audio formats. Beamcast IPTV solves this by running a background transcoding proxy.</p>
+        <p>When you start a stream, the app automatically detects if audio transcoding is required and uses system-wide <strong>FFmpeg</strong> to transcode audio to standard AAC on-the-fly while copying the video stream with zero CPU overhead.</p>
+      </div>
+    </div>
+
+    <!-- Section: Controls & Shortcuts -->
+    <div class="section">
+      <div class="section-title">⌨️ Keyboard Controls & Shortcuts</div>
+      <div class="shortcut-grid">
+        <div class="shortcut-key">F1</div>
+        <div class="shortcut-desc">Open Help &amp; Optimization Guide</div>
+        
+        <div class="shortcut-key">Space</div>
+        <div class="shortcut-desc">Toggle Play / Pause</div>
+
+        <div class="shortcut-key">M</div>
+        <div class="shortcut-desc">Toggle Audio Mute</div>
+
+        <div class="shortcut-key">F</div>
+        <div class="shortcut-desc">Toggle Fullscreen Mode</div>
+
+        <div class="shortcut-key">T</div>
+        <div class="shortcut-desc">Toggle Player-Only View</div>
+
+        <div class="shortcut-key">Double Click</div>
+        <div class="shortcut-desc">Toggle Fullscreen on Video Player</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('btn-copy-settings').addEventListener('click', () => {
+      const codeText = document.getElementById('mpv-settings-code').textContent;
+      navigator.clipboard.writeText(codeText).then(() => {
+        const btn = document.getElementById('btn-copy-settings');
+        btn.textContent = 'Copied!';
+        btn.style.borderColor = 'var(--accent-cyan)';
+        setTimeout(() => {
+          btn.textContent = 'Copy Settings';
+          btn.style.borderColor = 'var(--border-color)';
+        }, 2000);
+      }).catch(err => {
+        console.error('Could not copy text: ', err);
+      });
+    });
+  </script>
+</body>
+</html>

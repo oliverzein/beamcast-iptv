@@ -22,11 +22,11 @@ echo "Baue AppImage..."
 npm run dist
 
 # 3. Gebautes AppImage lokalisieren (nutzt die ausgelesene Version)
-APPIMAGE_PATH=$(find dist -maxdepth 1 -name "Beamcast IPTV-${VERSION}.AppImage" -o -name "Beamcast_IPTV-${VERSION}.AppImage" | head -n 1)
+APPIMAGE_PATH=$(find dist -maxdepth 1 -name "Beamcast IPTV-${VERSION}.AppImage" -o -name "Beamcast_IPTV-${VERSION}.AppImage" | sort -V | tail -n 1)
 
 if [ -z "$APPIMAGE_PATH" ]; then
   # Fallback falls Dateiname abweicht
-  APPIMAGE_PATH=$(find dist -maxdepth 1 -name "Beamcast*IPTV*.AppImage" | head -n 1)
+  APPIMAGE_PATH=$(find dist -maxdepth 1 -name "Beamcast*IPTV*.AppImage" | sort -V | tail -n 1)
 fi
 
 if [ -z "$APPIMAGE_PATH" ] || [ ! -f "$APPIMAGE_PATH" ]; then

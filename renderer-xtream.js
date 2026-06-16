@@ -620,6 +620,7 @@ async function loadSeriesEpisodes(seriesItem) {
   try {
     const seriesInfo = await fetchXtreamApi(activeAccount, 'get_series_info', { series_id: seriesItem.seriesId });
     activeSeriesData = seriesInfo;
+    activeSeriesData.seriesId = seriesItem.seriesId;
 
     // Load Plot
     if (seriesInfo.info && seriesInfo.info.plot) {
@@ -697,6 +698,13 @@ function renderEpisodesGrid(seasonNum) {
       const ext = ep.container_extension || 'mp4';
       const baseUrl = getAccountBaseUrl(activeAccount);
       const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
+      
+      if (activeSeriesData && activeSeriesData.seriesId) {
+        localStorage.setItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`, ep.id);
+      }
+      card.parentElement.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+
       playChannel(`${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`, ep.title, seriesCover.src, url);
     });
 
@@ -706,8 +714,26 @@ function renderEpisodesGrid(seasonNum) {
       const baseUrl = getAccountBaseUrl(activeAccount);
       const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
       const name = `${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`;
+      
+      if (activeSeriesData && activeSeriesData.seriesId) {
+        localStorage.setItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`, ep.id);
+      }
+      card.parentElement.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+
       window.electronAPI.showContextMenu(name, url);
     });
+
+    // Highlight saved episode card
+    if (activeSeriesData && activeSeriesData.seriesId) {
+      const savedEpId = localStorage.getItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`);
+      if (savedEpId && String(ep.id) === String(savedEpId)) {
+        card.classList.add('active');
+        setTimeout(() => {
+          card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 100);
+      }
+    }
 
     episodesGrid.appendChild(card);
   });
@@ -757,7 +783,7 @@ async function restoreLastState() {
         await loadXtreamSidebar();
         
         // 2. Restore active stream if saved
-        restoreLastStream();
+        // restoreLastStream();
 
         // 3. Restore EPG view preference
         const epgView = localStorage.getItem('epgView');
@@ -778,7 +804,7 @@ async function restoreLastState() {
       activePlaylistType = 'm3u';
       await fetchPlaylist(lastM3uUrl, true);
       
-      restoreLastStream('M3U');
+      // restoreLastStream('M3U');
     } else {
       loadPresetChannels(defaultChannels);
     }

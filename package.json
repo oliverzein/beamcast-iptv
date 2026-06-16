@@ -1,6 +1,6 @@
 {
   "name": "beamcast-iptv",
-  "version": "1.1.0",
+  "version": "1.2.2",
   "description": "Beamcast IPTV - Modern Electron IPTV Player with AC3 Transcoding and MPV support",
   "main": "main.js",
   "scripts": {
@@ -32,8 +32,13 @@
       "main.js",
       "preload.js",
       "renderer.js",
+      "renderer-epg.js",
+      "renderer-playback.js",
+      "renderer-state.js",
+      "renderer-xtream.js",
       "index.html",
       "stream_info.html",
+      "help.html",
       "style.css",
       "assets/**/*",
       "db.js",

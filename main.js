@@ -1,10 +1,15 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 
+// Set application name and userData path to ensure consistency across all environments
+app.name = 'beamcast-iptv';
+app.setPath('userData', path.join(app.getPath('appData'), 'beamcast-iptv'));
+
 // Import modular services
 const proxy = require('./lib/proxy');
 const externalPlayer = require('./lib/external-player');
 const streamInfo = require('./lib/stream-info');
+const help = require('./lib/help');
 
 // Enable HEVC hardware decoding switches in Electron/Chromium
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
@@ -86,6 +91,18 @@ function createMenu() {
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Help & Optimization...',
+          accelerator: 'F1',
+          click: () => {
+            help.showHelpWindow();
+          }
+        }
+      ]
     }
   ];
 
@@ -119,12 +136,14 @@ app.whenReady().then(() => {
   proxy.init(getMainWindow, app.getPath('userData'));
   externalPlayer.init(getMainWindow, () => proxy.killActiveFfmpeg());
   streamInfo.init(getMainWindow, proxy.runFfprobeCommand, getActiveStream);
+  help.init(getMainWindow);
 });
 
 app.on('window-all-closed', () => {
   proxy.killActiveFfmpeg();
   externalPlayer.killActiveExternal();
   streamInfo.closeWindow();
+  help.closeWindow();
   
   if (process.platform !== 'darwin') {
     app.quit();

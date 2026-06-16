@@ -121,6 +121,20 @@ function setupEventListeners() {
       btn.classList.add('active');
       activeTab = btn.getAttribute('data-tab');
       localStorage.setItem('lastTab', activeTab);
+      
+      // Visually hide/restore EPG Grid depending on active tab
+      if (activeTab !== 'live') {
+        appContainer.classList.remove('guide-open');
+        if (epgGridContainer) epgGridContainer.style.display = 'none';
+      } else {
+        const epgView = localStorage.getItem('epgView');
+        if (epgView === 'grid') {
+          appContainer.classList.add('guide-open');
+          if (epgGridContainer) epgGridContainer.style.display = 'flex';
+          populateEpgGridCategory().finally(() => renderEpgGrid());
+        }
+      }
+      
       loadXtreamSidebar();
     });
   });

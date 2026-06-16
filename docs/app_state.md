@@ -101,3 +101,5 @@ To work around this limitation and display historical catch-up program blocks in
 2. **Automatic Database Merging**: The application automatically merges these fetched catch-up program listings into IndexedDB.
 3. **EPG Grid Integration**: Once cached, these past programs populate the EPG Grid timeline and are fully styled as Timeshift (`archive`) blocks, allowing you to click and play them directly from the grid.
 
+FIX:
+Load EPG history for Timeshift enabled channels (only for Timeshift enabled channels!) using an additional direct `get_simple_data_table` Xtream API query during EPG sync.
