@@ -1,5 +1,7 @@
 # 🗺️ Implementation Plan: Electron IPTV Player with AC3 Transcoding Proxy
 
+# Important: this is the initial implementation plan. It is outdated and does not cover modifications and added features. It only serves as a reference.
+
 We will build a fully functioning Electron IPTV player inside `/home/oliverzein/Dokumente/Daten/Development/Electron/IPTV`. 
 Because the system already has **FFmpeg** installed, we will use it directly.
 

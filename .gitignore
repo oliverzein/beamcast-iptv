@@ -5,6 +5,7 @@ console.log
 .agents/
 .superpowers/
 .fallow/
+.devin/
 *.db
 *.db-journal
 .DS_Store

@@ -1072,6 +1072,32 @@ input[type="range"]::-webkit-slider-thumb:hover {
   grid-template-columns: 1fr;
 }
 
+/* Sync Dialog */
+.sync-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+.sync-checkbox input { width: 16px; height: 16px; accent-color: var(--accent-cyan); }
+.sync-progress { margin-top: 16px; }
+.sync-step { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.sync-bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.sync-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
 /* Player-only Mode */
 .app-container.player-only {
   grid-template-columns: 1fr;
