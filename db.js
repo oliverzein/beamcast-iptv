@@ -251,12 +251,42 @@ const IPTVDb = {
       channelIds.forEach(channelId => {
         const programmes = channelMap[channelId] || [];
         programmeCount += programmes.length;
-        epgStore.put({
-          compoundKey: `${accountId}_${channelId}`,
-          accountId,
-          epgChannelId: channelId,
-          programmes
-        });
+
+        const key = `${accountId}_${channelId}`;
+        const req = epgStore.get(key);
+        req.onsuccess = () => {
+          let merged = programmes;
+          if (req.result && req.result.programmes) {
+            const existing = req.result.programmes;
+            const seen = new Set();
+            const combined = [];
+
+            programmes.forEach(p => {
+              combined.push(p);
+              seen.add(p.start);
+            });
+
+            existing.forEach(p => {
+              if (!seen.has(p.start)) {
+                combined.push(p);
+                seen.add(p.start);
+              }
+            });
+
+            combined.sort((a, b) => a.start - b.start);
+            merged = combined;
+          }
+
+          const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+          merged = merged.filter(p => p.stop > cutoff);
+
+          epgStore.put({
+            compoundKey: key,
+            accountId,
+            epgChannelId: channelId,
+            programmes: merged
+          });
+        };
       });
 
       metaStore.put({
@@ -292,6 +322,61 @@ const IPTVDb = {
 
       done = true;
       finish();
+    });
+  },
+
+  getLiveStream(accountId, streamId) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['live_streams'], 'readonly');
+      const store = tx.objectStore('live_streams');
+      const req = store.get(`${accountId}_${streamId}`);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  },
+
+  mergeChannelEpg(accountId, epgChannelId, newProgrammes) {
+    return new Promise((resolve, reject) => {
+      if (!epgChannelId) return resolve();
+      const tx = this.db.transaction(['epg_programmes'], 'readwrite');
+      const store = tx.objectStore('epg_programmes');
+      const key = `${accountId}_${epgChannelId}`;
+
+      const req = store.get(key);
+      req.onsuccess = () => {
+        let merged = newProgrammes;
+        if (req.result && req.result.programmes) {
+          const existing = req.result.programmes;
+          const seen = new Set();
+          const combined = [];
+
+          newProgrammes.forEach(p => {
+            combined.push(p);
+            seen.add(p.start);
+          });
+
+          existing.forEach(p => {
+            if (!seen.has(p.start)) {
+              combined.push(p);
+              seen.add(p.start);
+            }
+          });
+
+          combined.sort((a, b) => a.start - b.start);
+          merged = combined;
+        }
+
+        const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400;
+        merged = merged.filter(p => p.stop > cutoff);
+
+        store.put({
+          compoundKey: key,
+          accountId,
+          epgChannelId,
+          programmes: merged
+        }).onsuccess = () => resolve();
+      };
+      req.onerror = (e) => reject(e.target.error);
     });
   },
 

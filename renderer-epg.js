@@ -437,6 +437,22 @@ async function loadEpgSidebar(streamId, hasCatchup) {
     
     if (res && res.epg_listings && res.epg_listings.length > 0) {
       currentEpgListings = res.epg_listings;
+
+      // Merge newly fetched EPG listings back to IndexedDB for the EPG Grid
+      IPTVDb.getLiveStream(activeAccount.id, streamId).then(stream => {
+        if (stream && stream.epgChannelId) {
+          const xmltvProgs = res.epg_listings.map(listing => ({
+            start: Number(listing.start_timestamp),
+            stop: Number(listing.stop_timestamp || listing.end_timestamp),
+            title: safeBase64Decode(listing.title),
+            desc: safeBase64Decode(listing.description),
+            category: ''
+          }));
+          IPTVDb.mergeChannelEpg(activeAccount.id, stream.epgChannelId, xmltvProgs)
+            .catch(err => console.warn('[EPG] mergeChannelEpg failed:', err));
+        }
+      }).catch(err => console.warn('[EPG] getLiveStream failed in loadEpgSidebar:', err));
+
       let scrollToElement = null;
       res.epg_listings.forEach(listing => {
         const item = document.createElement('li');
