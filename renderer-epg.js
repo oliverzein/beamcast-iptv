@@ -12,7 +12,8 @@ async function fetchAndStoreEpg(account) {
   const query = new URLSearchParams({
     host: account.host,
     username: account.username,
-    password: account.password
+    password: account.password,
+    prev_days: 7
   });
   const url = `http://127.0.0.1:18080/xtream/xmltv?${query.toString()}`;
   console.log('[EPG] fetching XMLTV via proxy:', url);
