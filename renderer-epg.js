@@ -29,6 +29,43 @@ async function fetchAndStoreEpg(account) {
   console.log('[EPG] saving to IndexedDB (saveEpg)...');
   await IPTVDb.saveEpg(account.id, channelMap);
   console.log('[EPG] saveEpg complete for account', account.id);
+
+  // Prefetch EPG history for timeshift-enabled channels sequentially
+  try {
+    const liveStreams = await IPTVDb.getStreamsByCategory('live_streams', account.id, 'all');
+    const catchupStreams = (liveStreams || []).filter(s => s.catchup === 1);
+    console.log(`[EPG Sync] Found ${catchupStreams.length} timeshift-enabled channels to fetch history for.`);
+
+    const loaderText = document.getElementById('loader-text');
+    const syncStep = document.getElementById('sync-step');
+
+    let idx = 0;
+    for (const stream of catchupStreams) {
+      idx++;
+      if (!stream || !stream.streamId || !stream.epgChannelId) continue;
+
+      const progressText = `Syncing TV Guide history (${idx}/${catchupStreams.length}): ${stream.name}...`;
+      if (loaderText) loaderText.textContent = progressText;
+      if (syncStep) syncStep.textContent = progressText;
+
+      try {
+        console.log(`[EPG Sync] Fetching history for channel: ${stream.name} (ID: ${stream.streamId})`);
+        const simpleEpg = await fetchXtreamApi(account, 'get_simple_data_table', { stream_id: stream.streamId });
+        
+        if (simpleEpg && simpleEpg.epg_listings && simpleEpg.epg_listings.length > 0) {
+          const xmltvProgs = simpleEpg.epg_listings.map(mapEpgListingToXmltvProg);
+          await IPTVDb.mergeChannelEpg(account.id, stream.epgChannelId, xmltvProgs);
+          console.log(`[EPG Sync] Merged ${xmltvProgs.length} history programs for channel: ${stream.name}`);
+        }
+      } catch (err) {
+        console.warn(`[EPG Sync] Failed history fetch for channel ${stream.name} (ID: ${stream.streamId}):`, err.message);
+      }
+    }
+    console.log('[EPG Sync] Sequential timeshift history prefetch completed successfully.');
+  } catch (err) {
+    console.warn('[EPG Sync] Error identifying/fetching timeshift channels:', err);
+  }
+
   return channelMap;
 }
 
@@ -409,6 +446,16 @@ function safeBase64Decode(str) {
   }
 }
 
+function mapEpgListingToXmltvProg(listing) {
+  return {
+    start: Number(listing.start_timestamp),
+    stop: Number(listing.stop_timestamp || listing.end_timestamp),
+    title: safeBase64Decode(listing.title),
+    desc: safeBase64Decode(listing.description),
+    category: ''
+  };
+}
+
 function formatTimeshiftDate(timestamp) {
   const date = new Date(Number(timestamp) * 1000);
   const year = date.getFullYear();
@@ -419,6 +466,7 @@ function formatTimeshiftDate(timestamp) {
   return `${year}-${month}-${day}:${hour}-${minute}`;
 }
 
+// fallow-ignore-next-line complexity
 async function loadEpgSidebar(streamId, hasCatchup) {
   if (!liveEpgContainer || !epgList) return;
   
@@ -439,15 +487,11 @@ async function loadEpgSidebar(streamId, hasCatchup) {
       currentEpgListings = res.epg_listings;
 
       // Merge newly fetched EPG listings back to IndexedDB for the EPG Grid
-      IPTVDb.getLiveStream(activeAccount.id, streamId).then(stream => {
+      IPTVDb.getLiveStream(activeAccount.id, streamId).then(
+        // fallow-ignore-next-line complexity
+        stream => {
         if (stream && stream.epgChannelId) {
-          const xmltvProgs = res.epg_listings.map(listing => ({
-            start: Number(listing.start_timestamp),
-            stop: Number(listing.stop_timestamp || listing.end_timestamp),
-            title: safeBase64Decode(listing.title),
-            desc: safeBase64Decode(listing.description),
-            category: ''
-          }));
+          const xmltvProgs = res.epg_listings.map(mapEpgListingToXmltvProg);
           IPTVDb.mergeChannelEpg(activeAccount.id, stream.epgChannelId, xmltvProgs)
             .catch(err => console.warn('[EPG] mergeChannelEpg failed:', err));
         }
