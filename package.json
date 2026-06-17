@@ -52,7 +52,12 @@
         "AppImage"
       ],
       "category": "AudioVideo",
-      "icon": "assets/logo.png"
+      "icon": "assets/logo.png",
+      "desktop": {
+        "Name": "Beamcast IPTV",
+        "Comment": "Modern Electron IPTV Player with AC3 Transcoding and MPV support"
+      },
+      "syncdesktopname": true
     }
   }
 }
