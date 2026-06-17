@@ -73,11 +73,20 @@ const btnToggleGuide = document.getElementById('btn-toggle-guide');
 const btnEpgClose = document.getElementById('btn-epg-close');
 const epgGridContainer = document.getElementById('epg-grid-container');
 const epgGridScroll = document.getElementById('epg-grid-scroll');
-const epgGridUpdated = document.getElementById('epg-grid-updated');
 const epgGridCategory = document.getElementById('epg-grid-category');
 const accountFormTitle = document.getElementById('account-form-title');
 const btnSaveAccount = document.getElementById('btn-save-account');
 const btnCancelEdit = document.getElementById('btn-cancel-edit');
+const btnAddAccount = document.getElementById('btn-add-account');
+const accountActiveBadge = document.getElementById('account-active-badge');
+const accountDetailMeta = document.getElementById('account-detail-meta');
+const accountMetaSync = document.getElementById('account-meta-sync');
+const accountMetaProgrammes = document.getElementById('account-meta-programmes');
+const accountMetaChannels = document.getElementById('account-meta-channels');
+const accountDetailActions = document.getElementById('account-detail-actions');
+const btnAccountConnect = document.getElementById('btn-account-connect');
+const btnAccountSync = document.getElementById('btn-account-sync');
+const btnAccountDelete = document.getElementById('btn-account-delete');
 
 const m3uModal = document.getElementById('m3u-modal');
 const btnCloseM3uModal = document.getElementById('btn-close-m3u-modal');
@@ -98,6 +107,7 @@ let activeSeriesData = null;
 let streamLoadTimeout = null;
 let seekDebounceTimeout = null;
 let editingAccountId = null;
+let selectedAccountId = null;
 let controlsTimeout = null;
 
 // MPV playback state

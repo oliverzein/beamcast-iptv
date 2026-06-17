@@ -152,7 +152,6 @@
         <div class="epg-grid-toolbar">
           <h3>TV Guide</h3>
           <select id="epg-grid-category" class="epg-grid-category"></select>
-          <span class="epg-grid-updated" id="epg-grid-updated"></span>
           <div class="epg-grid-toolbar-actions">
             <button id="btn-epg-now" class="btn-sm btn-sm-secondary">▶ Now</button>
             <button id="btn-epg-close" class="btn-sm btn-sm-secondary">✕ Close</button>
@@ -167,23 +166,30 @@
 
   <!-- Accounts Manager Modal Dialog (hidden by default) -->
   <div class="modal-overlay" id="accounts-modal" style="display: none;">
-    <div class="modal-card">
+    <div class="modal-card accounts-modal-card">
       <div class="modal-header">
         <h2>Xtream Codes Accounts</h2>
         <button id="btn-close-modal" class="close-btn">&times;</button>
       </div>
-      <div class="modal-body">
-        <!-- Saved accounts list -->
-        <div class="saved-accounts-section">
-          <h3>Saved Accounts</h3>
+      <div class="accounts-dialog-layout">
+        <!-- Sidebar: account list + add button -->
+        <aside class="accounts-sidebar">
+          <div class="accounts-sidebar-head">
+            <h3>Profiles</h3>
+            <button id="btn-add-account" class="add-account-btn" title="Add New Account">+</button>
+          </div>
           <ul class="accounts-list" id="accounts-list">
             <li class="empty-list-placeholder">No saved accounts found.</li>
           </ul>
-        </div>
-        
-        <!-- Add/Edit account form -->
-        <div class="account-form-section">
-          <h3 id="account-form-title">Add New Account</h3>
+        </aside>
+
+        <!-- Detail: form + meta + actions -->
+        <section class="accounts-detail">
+          <div class="accounts-detail-head">
+            <h3 id="account-form-title">Add New Account</h3>
+            <span id="account-active-badge" class="active-badge" style="display: none;">Aktiv</span>
+          </div>
+
           <form id="account-form" onsubmit="return false;">
             <div class="form-group">
               <label for="acc-name">Profile Name</label>
@@ -201,10 +207,35 @@
               <label for="acc-pass">Password</label>
               <input type="password" id="acc-pass" placeholder="Enter password" required>
             </div>
-            <button type="submit" id="btn-save-account" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Save Profile</button>
-            <button type="button" id="btn-cancel-edit" class="btn btn-secondary" style="display: none; width: 100%; margin-top: 10px;">Cancel</button>
+            <div class="form-actions-row">
+              <button type="submit" id="btn-save-account" class="btn btn-primary">Save Profile</button>
+              <button type="button" id="btn-cancel-edit" class="btn btn-secondary" style="display: none;">Cancel</button>
+            </div>
           </form>
-        </div>
+
+          <!-- Account meta (visible when account selected) -->
+          <div id="account-detail-meta" class="account-detail-meta" style="display: none;">
+            <div class="meta-row">
+              <span class="meta-label">Letzte Sync</span>
+              <span id="account-meta-sync" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Programme</span>
+              <span id="account-meta-programmes" class="meta-value">—</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">Kanäle</span>
+              <span id="account-meta-channels" class="meta-value">—</span>
+            </div>
+          </div>
+
+          <!-- Account actions (visible when account selected) -->
+          <div id="account-detail-actions" class="account-detail-actions" style="display: none;">
+            <button type="button" id="btn-account-connect" class="btn btn-primary">⟳ Connect</button>
+            <button type="button" id="btn-account-sync" class="btn btn-secondary">Sync</button>
+            <button type="button" id="btn-account-delete" class="btn btn-danger">Delete</button>
+          </div>
+        </section>
       </div>
     </div>
   </div>

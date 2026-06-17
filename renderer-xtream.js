@@ -1,9 +1,16 @@
 function clearEditState() {
   editingAccountId = null;
+  selectedAccountId = null;
   accountForm.reset();
   if (accountFormTitle) accountFormTitle.textContent = 'Add New Account';
   if (btnSaveAccount) btnSaveAccount.textContent = 'Save Profile';
   if (btnCancelEdit) btnCancelEdit.style.display = 'none';
+  if (accountActiveBadge) accountActiveBadge.style.display = 'none';
+  if (accountDetailMeta) accountDetailMeta.style.display = 'none';
+  if (accountDetailActions) accountDetailActions.style.display = 'none';
+  // Deselect any sidebar item visually
+  document.querySelectorAll('.accounts-list .account-item.selected')
+    .forEach(el => el.classList.remove('selected'));
 }
 
 // --- Xtream Codes Account Manager Modals & Database logic ---
@@ -22,6 +29,49 @@ function setupAccountsModal() {
   btnCancelEdit.addEventListener('click', () => {
     clearEditState();
   });
+
+  // "+" Add new account — clears selection and form for fresh entry
+  if (btnAddAccount) {
+    btnAddAccount.addEventListener('click', () => {
+      clearDialogSelection();
+      if (accountFormTitle) accountFormTitle.textContent = 'Add New Account';
+      document.getElementById('acc-name').focus();
+    });
+  }
+
+  // Detail-pane actions (only visible when account selected)
+  if (btnAccountConnect) {
+    btnAccountConnect.addEventListener('click', async () => {
+      if (!selectedAccountId) return;
+      const list = await IPTVDb.getAccounts();
+      const acc = list.find(a => a.id === selectedAccountId);
+      if (acc) connectXtreamAccount(acc);
+    });
+  }
+
+  if (btnAccountSync) {
+    btnAccountSync.addEventListener('click', async () => {
+      if (!selectedAccountId) return;
+      const list = await IPTVDb.getAccounts();
+      const acc = list.find(a => a.id === selectedAccountId);
+      if (acc) openSyncDialog(acc);
+    });
+  }
+
+  if (btnAccountDelete) {
+    btnAccountDelete.addEventListener('click', async () => {
+      if (!selectedAccountId) return;
+      const list = await IPTVDb.getAccounts();
+      const acc = list.find(a => a.id === selectedAccountId);
+      if (!acc) return;
+      if (confirm(`Delete profile "${acc.name}"?`)) {
+        await IPTVDb.deleteAccount(acc.id);
+        await IPTVDb.clearAccountCache(acc.id);
+        clearDialogSelection();
+        await loadAccountsList();
+      }
+    });
+  }
 
   // Save/Update Account Submit
   accountForm.addEventListener('submit', async (e) => {
@@ -63,7 +113,7 @@ function setupAccountsModal() {
         };
 
         await IPTVDb.addAccount(updatedAccount);
-        
+
         // Falls wir den aktuell aktiven Account bearbeitet haben, activeAccount aktualisieren
         if (activeAccount && activeAccount.id === editingAccountId) {
           activeAccount = updatedAccount;
@@ -75,8 +125,13 @@ function setupAccountsModal() {
           }
         }
 
+        const editedId = editingAccountId;
         clearEditState();
-        loadAccountsList();
+        await loadAccountsList();
+        // Re-select the updated account so its meta + actions remain visible.
+        const refreshed = await IPTVDb.getAccounts();
+        const reSelected = refreshed.find(a => a.id === editedId);
+        if (reSelected) selectAccountInDialog(reSelected);
       } catch (err) {
         alert(`Database error: ${err.message}`);
       }
@@ -92,8 +147,12 @@ function setupAccountsModal() {
 
       try {
         await IPTVDb.addAccount(account);
-        accountForm.reset();
-        loadAccountsList();
+        clearEditState();
+        await loadAccountsList();
+        // Auto-select the newly created account.
+        const refreshed = await IPTVDb.getAccounts();
+        const created = refreshed.find(a => a.id === account.id);
+        if (created) selectAccountInDialog(created);
       } catch (err) {
         alert(`Database error: ${err.message}`);
       }
@@ -162,72 +221,91 @@ async function loadAccountsList() {
 
     list.forEach(acc => {
       const li = document.createElement('li');
-      
-      const info = document.createElement('div');
-      info.className = 'account-info';
-      
-      const name = document.createElement('div');
-      name.className = 'account-name';
+      li.className = 'account-item';
+      li.dataset.accountId = acc.id;
+      if (activeAccount && activeAccount.id === acc.id) li.classList.add('is-active');
+      if (selectedAccountId === acc.id) li.classList.add('selected');
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+
+      const name = document.createElement('span');
+      name.className = 'name';
       name.textContent = acc.name;
-      
-      const host = document.createElement('div');
-      host.className = 'account-host';
-      host.textContent = acc.host;
-      
-      info.appendChild(name);
-      info.appendChild(host);
 
-      const actions = document.createElement('div');
-      actions.className = 'account-actions';
-      
-      const btnLoad = document.createElement('button');
-      btnLoad.className = 'btn-sm btn-sm-primary';
-      btnLoad.textContent = 'Connect';
-      btnLoad.addEventListener('click', () => connectXtreamAccount(acc));
+      li.appendChild(dot);
+      li.appendChild(name);
 
-      const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn-sm btn-sm-secondary';
-      btnEdit.textContent = 'Edit';
-      btnEdit.addEventListener('click', () => {
-        editingAccountId = acc.id;
-        document.getElementById('acc-name').value = acc.name;
-        document.getElementById('acc-host').value = acc.host;
-        document.getElementById('acc-user').value = acc.username;
-        document.getElementById('acc-pass').value = acc.password;
+      li.addEventListener('click', () => selectAccountInDialog(acc));
 
-        if (accountFormTitle) accountFormTitle.textContent = `Edit Account: ${acc.name}`;
-        if (btnSaveAccount) btnSaveAccount.textContent = 'Update Profile';
-        if (btnCancelEdit) btnCancelEdit.style.display = 'block';
-      });
-
-      const btnSync = document.createElement('button');
-      btnSync.className = 'btn-sm btn-sm-secondary';
-      btnSync.textContent = '🔄 Sync';
-      btnSync.addEventListener('click', () => openSyncDialog(acc));
-
-      const btnDelete = document.createElement('button');
-      btnDelete.className = 'btn-sm btn-sm-danger';
-      btnDelete.textContent = 'Delete';
-      btnDelete.addEventListener('click', async () => {
-        if (confirm(`Delete profile "${acc.name}"?`)) {
-          await IPTVDb.deleteAccount(acc.id);
-          await IPTVDb.clearAccountCache(acc.id);
-          loadAccountsList();
-        }
-      });
-
-      actions.appendChild(btnLoad);
-      actions.appendChild(btnSync);
-      actions.appendChild(btnEdit);
-      actions.appendChild(btnDelete);
-      
-      li.appendChild(info);
-      li.appendChild(actions);
       accountsList.appendChild(li);
     });
   } catch (err) {
     console.error('Failed to load accounts list:', err);
   }
+}
+
+function selectAccountInDialog(acc) {
+  selectedAccountId = acc.id;
+  editingAccountId = acc.id;
+
+  // Populate form
+  document.getElementById('acc-name').value = acc.name;
+  document.getElementById('acc-host').value = acc.host;
+  document.getElementById('acc-user').value = acc.username;
+  document.getElementById('acc-pass').value = acc.password;
+
+  if (accountFormTitle) accountFormTitle.textContent = `Edit: ${acc.name}`;
+  if (btnSaveAccount) btnSaveAccount.textContent = 'Update Profile';
+  if (btnCancelEdit) btnCancelEdit.style.display = 'inline-block';
+
+  // Active badge
+  if (accountActiveBadge) {
+    accountActiveBadge.style.display = (activeAccount && activeAccount.id === acc.id) ? 'inline-block' : 'none';
+  }
+
+  // Meta + actions visible
+  if (accountDetailMeta) accountDetailMeta.style.display = 'flex';
+  if (accountDetailActions) accountDetailActions.style.display = 'flex';
+
+  // Visual selection in sidebar
+  document.querySelectorAll('.accounts-list .account-item.selected')
+    .forEach(el => el.classList.remove('selected'));
+  const li = accountsList.querySelector(`.account-item[data-account-id="${acc.id}"]`);
+  if (li) li.classList.add('selected');
+
+  // Async: fetch EPG meta for counts + sync time
+  if (accountMetaSync) {
+    accountMetaSync.textContent = 'lade…';
+    accountMetaSync.classList.remove('never');
+  }
+  if (accountMetaProgrammes) accountMetaProgrammes.textContent = '—';
+  if (accountMetaChannels) accountMetaChannels.textContent = '—';
+
+  IPTVDb.getEpgMeta(acc.id).then(meta => {
+    if (!accountDetailMeta || accountDetailMeta.style.display === 'none') return;
+    if (meta && meta.lastFetched) {
+      if (accountMetaSync) {
+        accountMetaSync.textContent = new Date(meta.lastFetched).toLocaleString('de-DE');
+        accountMetaSync.classList.remove('never');
+      }
+      if (accountMetaProgrammes) accountMetaProgrammes.textContent = `${(meta.programmeCount || 0).toLocaleString('de-DE')} Einträge`;
+      if (accountMetaChannels) accountMetaChannels.textContent = `${(meta.channelCount || 0).toLocaleString('de-DE')} Kanäle`;
+    } else {
+      if (accountMetaSync) {
+        accountMetaSync.textContent = 'noch keine';
+        accountMetaSync.classList.add('never');
+      }
+    }
+  }).catch(() => { /* keep placeholder */ });
+}
+
+function clearDialogSelection() {
+  clearEditState();
+  // Reset meta fields
+  if (accountMetaSync) { accountMetaSync.textContent = '—'; accountMetaSync.classList.remove('never'); }
+  if (accountMetaProgrammes) accountMetaProgrammes.textContent = '—';
+  if (accountMetaChannels) accountMetaChannels.textContent = '—';
 }
 
 // Set active Xtream Codes account and update UI / state

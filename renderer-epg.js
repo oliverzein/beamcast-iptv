@@ -159,27 +159,42 @@ function closeEpgGrid() {
   if (epgNowLineTimer) { clearInterval(epgNowLineTimer); epgNowLineTimer = null; }
 }
 
-// Drag-to-scroll for EPG grid.
+// Middle-button drag-to-scroll for EPG grid (pan in all directions).
 if (epgGridScroll) {
   let isDragging = false, startX, startY, scrollL, scrollT;
+  // Suppress the synthetic click that fires on mouseup after a middle-button drag,
+  // otherwise the programme under the cursor would start playing after panning.
+  let suppressNextClick = false;
   epgGridScroll.addEventListener('mousedown', (e) => {
-    // Ignore clicks on programme blocks (they have their own click handlers).
-    if (e.target.closest('.epg-prog') || e.target.closest('.epg-grid-channel')) return;
+    // Middle button only. Let other buttons pass through to programme/channel handlers.
+    if (e.button !== 1) return;
     isDragging = true;
     startX = e.clientX; startY = e.clientY;
     scrollL = epgGridScroll.scrollLeft; scrollT = epgGridScroll.scrollTop;
     epgGridScroll.style.cursor = 'grabbing';
     e.preventDefault();
   });
+  // Suppress click if drag ended on a programme block.
+  epgGridScroll.addEventListener('click', (e) => {
+    if (suppressNextClick && e.button === 0) {
+      suppressNextClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
   window.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     epgGridScroll.scrollLeft = scrollL - (e.clientX - startX);
     epgGridScroll.scrollTop = scrollT - (e.clientY - startY);
   });
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (e) => {
     if (!isDragging) return;
+    if (e.button !== 1) return;
     isDragging = false;
     epgGridScroll.style.cursor = '';
+    // Mark the next click as suppressed so a programme under the cursor doesn't start.
+    suppressNextClick = true;
+    setTimeout(() => { suppressNextClick = false; }, 0);
   });
 }
 
@@ -317,13 +332,6 @@ async function renderEpgGrid() {
   }
 
   const channels = (await IPTVDb.getStreamsByCategory('live_streams', activeAccount.id, categoryId)) || [];
-
-  const meta = await IPTVDb.getEpgMeta(activeAccount.id);
-  if (epgGridUpdated) {
-    epgGridUpdated.textContent = meta && meta.lastFetched
-      ? `Stand: ${new Date(meta.lastFetched).toLocaleString('de-DE')}`
-      : 'Keine Guide-Daten';
-  }
 
   if (!channels.length) {
     epgGridScroll.innerHTML = '<div class="epg-grid-empty">Keine Kanäle in dieser Kategorie.</div>';
