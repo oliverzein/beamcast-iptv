@@ -35,6 +35,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.error('IndexedDB open error:', e);
   }
 
+  // Load AppSettings (after DB open, before any consumer reads settings)
+  try {
+    await AppSettings.load();
+  } catch (e) {
+    console.error('AppSettings load error:', e);
+  }
+
   setupEventListeners();
   setupPlayerControls();
   setupAccountsModal();
@@ -42,7 +49,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupGlobalModalDismissal();
   setupTranscodeStatusListener();
   setupMpvIntegrations();
-  
+  setupSettingsIpc();
+
   // Restore previously loaded provider and stream
   await restoreLastState();
 });
@@ -420,5 +428,18 @@ function filterChannels() {
         }
         renderChannelList(items);
       });
+  }
+}
+
+// Settings IPC bridge: open settings modal when menu/IPC triggers it
+function setupSettingsIpc() {
+  if (window.electronAPI && window.electronAPI.onOpenSettings) {
+    window.electronAPI.onOpenSettings(() => {
+      if (typeof window.openSettingsModal === 'function') {
+        window.openSettingsModal();
+      } else {
+        console.warn('[Settings] openSettingsModal not yet available');
+      }
+    });
   }
 }
