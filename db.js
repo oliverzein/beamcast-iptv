@@ -4,7 +4,7 @@
  */
 const IPTVDb = {
   dbName: 'IPTVPlayerDB',
-  dbVersion: 3,
+  dbVersion: 4,
   db: null,
 
   /**
@@ -27,6 +27,7 @@ const IPTVDb = {
 
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
+        const oldVersion = event.oldVersion;
 
         // 1. Accounts store
         if (!db.objectStoreNames.contains('accounts')) {
@@ -73,6 +74,13 @@ const IPTVDb = {
         }
         if (!db.objectStoreNames.contains('epg_meta')) {
           db.createObjectStore('epg_meta', { keyPath: 'accountId' });
+        }
+
+        // 5. Settings store (added in v4)
+        if (oldVersion < 4) {
+          if (!db.objectStoreNames.contains('settings')) {
+            db.createObjectStore('settings', { keyPath: 'key' });
+          }
         }
       };
     });
@@ -209,6 +217,17 @@ const IPTVDb = {
       const store = transaction.objectStore(storeName);
       const index = store.index('accountId');
       const request = index.getAll(IDBKeyRange.only(accountId));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  },
+
+  // Internal helper: read all rows from a store.
+  _idbGetAll(storeName) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([storeName], 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.getAll();
       request.onsuccess = () => resolve(request.result);
       request.onerror = (e) => reject(e.target.error);
     });

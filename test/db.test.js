@@ -59,3 +59,22 @@ test('getCatchupStreams: empty result when none match', async () => {
   IPTVDb.db.close();
   await new Promise(r => { const req = indexedDB.deleteDatabase('IPTVPlayerDB'); req.onsuccess = r; req.onerror = r; });
 });
+
+test('IDB v3→v4 migration adds settings store', async () => {
+  // Open at v3 to simulate existing user state.
+  const v3Req = indexedDB.open('IPTVPlayerDB', 3);
+  await new Promise((resolve, reject) => {
+    v3Req.onsuccess = () => { v3Req.result.close(); resolve(); };
+    v3Req.onerror = (e) => reject(e.target.error);
+  });
+
+  // Now open via IPTVDb at v4.
+  await IPTVDb.open();
+  const storeNames = Array.from(IPTVDb.db.objectStoreNames);
+  assert.ok(storeNames.includes('settings'), 'settings store should exist after migration');
+  assert.ok(storeNames.includes('epg_programmes'), 'existing stores preserved');
+  assert.ok(storeNames.includes('accounts'), 'existing stores preserved');
+
+  IPTVDb.db.close();
+  await new Promise(r => { const req = indexedDB.deleteDatabase('IPTVPlayerDB'); req.onsuccess = r; req.onerror = r; });
+});
