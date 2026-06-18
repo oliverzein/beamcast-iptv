@@ -1759,3 +1759,21 @@ input[type="range"]::-webkit-slider-thumb:hover {
   pointer-events: none;
 }
 .epg-grid-empty { padding: 24px; color: var(--text-muted); }
+
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.form-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #ff453a;
+}
+input.invalid,
+input[type="number"].invalid {
+  border-color: #ff453a;
+  outline-color: #ff453a;
+}
