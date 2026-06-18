@@ -48,7 +48,7 @@ async function fetchAndStoreEpg(account) {
     const stats = await prefetchEpgHistory(catchupStreams, {
       fetcher,
       onProgress,
-      concurrency: AppSettings.get('epgPrefetchConcurrency', 4),
+      concurrency: AppSettings.get('epgPrefetchConcurrency'),
       perFetchTimeoutMs: 15000
     });
 

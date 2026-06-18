@@ -317,7 +317,7 @@ const IPTVDb = {
             merged = combined;
           }
 
-          const cutoff = Math.floor(Date.now() / 1000) - AppSettings.get('epgHistoricFilterDays', 7) * 86400;
+          const cutoff = Math.floor(Date.now() / 1000) - AppSettings.get('epgHistoricFilterDays') * 86400;
           merged = merged.filter(p => p.stop > cutoff);
 
           epgStore.put({
@@ -406,7 +406,7 @@ const IPTVDb = {
           merged = combined;
         }
 
-        const cutoff = Math.floor(Date.now() / 1000) - AppSettings.get('epgHistoricFilterDays', 7) * 86400;
+        const cutoff = Math.floor(Date.now() / 1000) - AppSettings.get('epgHistoricFilterDays') * 86400;
         merged = merged.filter(p => p.stop > cutoff);
 
         store.put({

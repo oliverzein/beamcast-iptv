@@ -3,13 +3,23 @@
  * Reads/writes via window.AppSettings. No direct IDB access.
  */
 
-// Schema mirror (kept in sync with lib/settings.js SCHEMA; the source of truth
-// is the AppSettings module — we only need the defaults and ranges for the form).
-const FORM_SCHEMA = {
-  epgPrefetchConcurrency: { min: 1, max: 10, default: 4, el: 'set-concurrency' },
-  cacheAgeLimitHours:     { min: 1, max: 168, default: 24, el: 'set-cache' },
-  epgHistoricFilterDays:  { min: 1, max: 30, default: 7, el: 'set-historic' },
-};
+// Schema derivation — the single source of truth is window.AppSettingsSchema
+// (exported from lib/settings.js). We just attach the input element ID for the form.
+function inputIdForKey(key) {
+  const map = {
+    epgPrefetchConcurrency: 'set-concurrency',
+    cacheAgeLimitHours: 'set-cache',
+    epgHistoricFilterDays: 'set-historic'
+  };
+  return map[key];
+}
+
+const FORM_SCHEMA = Object.fromEntries(
+  Object.entries(window.AppSettingsSchema).map(([key, meta]) => [
+    key,
+    { ...meta, el: inputIdForKey(key) }
+  ])
+);
 
 const modal = () => document.getElementById('settings-modal');
 

@@ -199,3 +199,11 @@ test('AppSettings: get() before load() throws', async () => {
 
   await resetDb();
 });
+
+test('AppSettings: SCHEMA is exported and has expected keys', () => {
+  const { SCHEMA } = require('../lib/settings.js');
+  assert.ok(SCHEMA.epgPrefetchConcurrency, 'epgPrefetchConcurrency in SCHEMA');
+  assert.ok(SCHEMA.cacheAgeLimitHours, 'cacheAgeLimitHours in SCHEMA');
+  assert.ok(SCHEMA.epgHistoricFilterDays, 'epgHistoricFilterDays in SCHEMA');
+  assert.strictEqual(typeof SCHEMA.epgPrefetchConcurrency.default, 'number');
+});
