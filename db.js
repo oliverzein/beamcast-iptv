@@ -233,6 +233,17 @@ const IPTVDb = {
     });
   },
 
+  // Internal helper: write a single row to a store.
+  _idbPut(storeName, value) {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.put(value);
+      request.onsuccess = () => resolve();
+      request.onerror = (e) => reject(e.target.error);
+    });
+  },
+
   getCategories(storeName, accountId) {
     console.log(`[DB getCategories] Querying ${storeName} for accountId:`, accountId);
     return this._idbQueryByAccountId(storeName, accountId).then(result => {
