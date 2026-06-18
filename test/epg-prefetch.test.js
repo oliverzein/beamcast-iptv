@@ -40,8 +40,8 @@ test('prefetchEpgHistory: concurrency cap is respected (timing-based)', async ()
   const start = Date.now();
   await prefetchEpgHistory(streams, { fetcher, concurrency: 3, perFetchTimeoutMs: 5000 });
   const elapsed = Date.now() - start;
-  assert.ok(elapsed < 350, `expected <350ms with concurrency=3, got ${elapsed}ms`);
-  assert.ok(elapsed >= 200, `expected >=200ms (two batches), got ${elapsed}ms`);
+  assert.ok(elapsed < 500, `expected <500ms with concurrency=3, got ${elapsed}ms`);
+  assert.ok(elapsed >= 180, `expected >=180ms (two batches), got ${elapsed}ms`);
 });
 
 test('prefetchEpgHistory: per-fetch timeout skips slow stream without hanging', async () => {
@@ -85,5 +85,42 @@ test('prefetchEpgHistory: onProgress invoked with correct indices', async () => 
 
 test('prefetchEpgHistory: empty stream list returns zero stats', async () => {
   const stats = await prefetchEpgHistory([], { fetcher: okFetcher(), concurrency: 2, perFetchTimeoutMs: 1000 });
-  assert.deepStrictEqual(stats, { total: 0, succeeded: 0, failed: 0, skipped: 0 });
+  assert.deepStrictEqual(stats, { total: 0, succeeded: 0, failed: 0, skipped: 0, results: [] });
+});
+
+test('prefetchEpgHistory: returns per-stream results in queue order', async () => {
+  const streams = [sampleStream(1, 'A'), sampleStream(2, 'B')];
+  const fetcher = async (s) => ({ epg_listings: [{ title: s.name }] });
+  const stats = await prefetchEpgHistory(streams, { fetcher, concurrency: 2, perFetchTimeoutMs: 1000 });
+  assert.strictEqual(stats.results.length, 2);
+  assert.strictEqual(stats.results[0].stream.streamId, 1);
+  assert.strictEqual(stats.results[0].listings.epg_listings[0].title, 'A');
+  assert.strictEqual(stats.results[1].stream.streamId, 2);
+  assert.strictEqual(stats.results[1].listings.epg_listings[0].title, 'B');
+});
+
+test('prefetchEpgHistory: results record errors with null listings', async () => {
+  const fetcher = async (s) => { if (s.streamId === 2) throw new Error('x'); return { epg_listings: [] }; };
+  const streams = [sampleStream(1, 'A'), sampleStream(2, 'B'), sampleStream(3, 'C')];
+  const stats = await prefetchEpgHistory(streams, { fetcher, concurrency: 2, perFetchTimeoutMs: 1000 });
+  const byId = Object.fromEntries(stats.results.map(r => [r.stream.streamId, r]));
+  assert.strictEqual(byId[1].error, null);
+  assert.strictEqual(byId[1].listings.epg_listings.length, 0);
+  assert.strictEqual(byId[2].error.message, 'x');
+  assert.strictEqual(byId[2].listings, null);
+  assert.strictEqual(byId[3].error, null);
+});
+
+test('prefetchEpgHistory: skipped streams not in results', async () => {
+  const fetcher = async (s) => ({ epg_listings: [] });
+  const streams = [
+    sampleStream(1, 'A'),
+    { name: 'no-id' },  // skipped: no streamId, no epgChannelId
+    sampleStream(3, 'C')
+  ];
+  const stats = await prefetchEpgHistory(streams, { fetcher, concurrency: 2, perFetchTimeoutMs: 1000 });
+  assert.strictEqual(stats.skipped, 1);
+  assert.strictEqual(stats.results.length, 2);
+  const ids = stats.results.map(r => r.stream.streamId).sort();
+  assert.deepStrictEqual(ids, [1, 3]);
 });

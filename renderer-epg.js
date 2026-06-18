@@ -52,21 +52,15 @@ async function fetchAndStoreEpg(account) {
       perFetchTimeoutMs: 15000
     });
 
-    // Persist fetched history into IDB sequentially after the parallel fetch —
-    // mergeChannelEpg opens its own transaction per call, and the volume is small
-    // relative to the network cost.
+    // Persist fetched history into IDB using the results already in hand.
     let merged = 0;
-    for (const stream of catchupStreams) {
-      if (!stream || !stream.streamId || !stream.epgChannelId) continue;
-      try {
-        const res = await fetcher(stream);
-        if (res && res.epg_listings && res.epg_listings.length > 0) {
-          const xmltvProgs = res.epg_listings.map(mapEpgListingToXmltvProg);
-          await IPTVDb.mergeChannelEpg(account.id, stream.epgChannelId, xmltvProgs);
-          merged += xmltvProgs.length;
-        }
-      } catch (err) {
-        console.warn(`[EPG Sync] merge failed for ${stream.name}:`, err.message);
+    for (const { stream, listings, error } of stats.results) {
+      if (error) continue;
+      if (!stream || !stream.epgChannelId) continue;
+      if (listings && listings.epg_listings && listings.epg_listings.length > 0) {
+        const xmltvProgs = listings.epg_listings.map(mapEpgListingToXmltvProg);
+        await IPTVDb.mergeChannelEpg(account.id, stream.epgChannelId, xmltvProgs);
+        merged += xmltvProgs.length;
       }
     }
     console.log(`[EPG Sync] Timeshift prefetch done. fetched=${stats.succeeded}/${stats.total} failed=${stats.failed} skipped=${stats.skipped} merged=${merged}`);
