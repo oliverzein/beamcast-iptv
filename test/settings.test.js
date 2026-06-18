@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 require('fake-indexeddb/auto');
 const { IPTVDb } = require('../db.js');
+globalThis.IPTVDb = IPTVDb;
 
 // Helper: reset the IDB between tests.
 async function resetDb() {
