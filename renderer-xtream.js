@@ -476,12 +476,12 @@ function openSyncDialog(account) {
     });
   });
 
-  btnStart.addEventListener('click', () => {
+  btnStart.onclick = () => {
     if (!syncTargetAccount) return;
     const scope = { live: chkLive.checked, vod: chkVod.checked, epg: chkEpg.checked };
     if (!scope.live && !scope.vod && !scope.epg) return;
     runScopedSync(syncTargetAccount, scope);
-  });
+  };
 })();
 
 async function runScopedSync(account, scope) {
