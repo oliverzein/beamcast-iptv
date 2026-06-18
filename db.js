@@ -229,6 +229,16 @@ const IPTVDb = {
     });
   },
 
+  // Returns live_streams for accountId where catchup === 1.
+  // Filters in memory after the accountId index lookup because
+  // the catchup flag has no dedicated IDB index and the typical
+  // live_streams store is small enough to filter cheaply.
+  getCatchupStreams(accountId) {
+    return this._idbQueryByAccountId('live_streams', accountId).then(items =>
+      (items || []).filter(s => s && s.catchup === 1)
+    );
+  },
+
   searchStreams(storeName, accountId, query) {
     return this._idbQueryByAccountId(storeName, accountId).then(items => {
       if (!query) return items;
@@ -422,3 +432,7 @@ const IPTVDb = {
     return Promise.all(promises);
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { IPTVDb };
+}
