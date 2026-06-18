@@ -68,6 +68,20 @@ function createMenu() {
       ]
     },
     {
+      label: 'Settings',
+      submenu: [
+        {
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('open-settings');
+            }
+          }
+        }
+      ]
+    },
+    {
       label: 'Playback',
       submenu: [
         {

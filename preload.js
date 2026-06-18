@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onShowM3uModal: (callback) => {
     ipcRenderer.on('show-m3u-modal', () => callback());
   },
+  onOpenSettings: (callback) => {
+    ipcRenderer.on('open-settings', () => callback());
+  },
   onTranscodeStatus: (callback) => {
     ipcRenderer.on('transcode-status', (event, data) => callback(data));
   },
