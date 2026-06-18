@@ -30,38 +30,46 @@ async function fetchAndStoreEpg(account) {
   await IPTVDb.saveEpg(account.id, channelMap);
   console.log('[EPG] saveEpg complete for account', account.id);
 
-  // Prefetch EPG history for timeshift-enabled channels sequentially
+  // Prefetch EPG history for timeshift-enabled channels in parallel.
   try {
-    const liveStreams = await IPTVDb.getStreamsByCategory('live_streams', account.id, 'all');
-    const catchupStreams = (liveStreams || []).filter(s => s.catchup === 1);
+    const catchupStreams = await IPTVDb.getCatchupStreams(account.id);
     console.log(`[EPG Sync] Found ${catchupStreams.length} timeshift-enabled channels to fetch history for.`);
 
     const loaderText = document.getElementById('loader-text');
     const syncStep = document.getElementById('sync-step');
 
-    let idx = 0;
+    const fetcher = (stream) => fetchXtreamApi(account, 'get_simple_data_table', { stream_id: stream.streamId });
+    const onProgress = (current, total, stream) => {
+      const text = `Syncing TV Guide history (${current}/${total}): ${stream.name}...`;
+      if (loaderText) loaderText.textContent = text;
+      if (syncStep) syncStep.textContent = text;
+    };
+
+    const stats = await prefetchEpgHistory(catchupStreams, {
+      fetcher,
+      onProgress,
+      concurrency: 5,
+      perFetchTimeoutMs: 15000
+    });
+
+    // Persist fetched history into IDB sequentially after the parallel fetch —
+    // mergeChannelEpg opens its own transaction per call, and the volume is small
+    // relative to the network cost.
+    let merged = 0;
     for (const stream of catchupStreams) {
-      idx++;
       if (!stream || !stream.streamId || !stream.epgChannelId) continue;
-
-      const progressText = `Syncing TV Guide history (${idx}/${catchupStreams.length}): ${stream.name}...`;
-      if (loaderText) loaderText.textContent = progressText;
-      if (syncStep) syncStep.textContent = progressText;
-
       try {
-        console.log(`[EPG Sync] Fetching history for channel: ${stream.name} (ID: ${stream.streamId})`);
-        const simpleEpg = await fetchXtreamApi(account, 'get_simple_data_table', { stream_id: stream.streamId });
-        
-        if (simpleEpg && simpleEpg.epg_listings && simpleEpg.epg_listings.length > 0) {
-          const xmltvProgs = simpleEpg.epg_listings.map(mapEpgListingToXmltvProg);
+        const res = await fetcher(stream);
+        if (res && res.epg_listings && res.epg_listings.length > 0) {
+          const xmltvProgs = res.epg_listings.map(mapEpgListingToXmltvProg);
           await IPTVDb.mergeChannelEpg(account.id, stream.epgChannelId, xmltvProgs);
-          console.log(`[EPG Sync] Merged ${xmltvProgs.length} history programs for channel: ${stream.name}`);
+          merged += xmltvProgs.length;
         }
       } catch (err) {
-        console.warn(`[EPG Sync] Failed history fetch for channel ${stream.name} (ID: ${stream.streamId}):`, err.message);
+        console.warn(`[EPG Sync] merge failed for ${stream.name}:`, err.message);
       }
     }
-    console.log('[EPG Sync] Sequential timeshift history prefetch completed successfully.');
+    console.log(`[EPG Sync] Timeshift prefetch done. fetched=${stats.succeeded}/${stats.total} failed=${stats.failed} skipped=${stats.skipped} merged=${merged}`);
   } catch (err) {
     console.warn('[EPG Sync] Error identifying/fetching timeshift channels:', err);
   }
