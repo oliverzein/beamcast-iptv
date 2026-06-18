@@ -332,7 +332,7 @@ async function connectXtreamAccount(account, forceSync = false) {
   accountsModal.style.display = 'none';
   
   // Check if cache is valid (less than 24 hours old) and not forcing sync
-  const cacheAgeLimit = 24 * 60 * 60 * 1000; // 24 hours
+  const cacheAgeLimit = AppSettings.get('cacheAgeLimitHours', 24) * 60 * 60 * 1000;
   const isCacheValid = account.lastSync && (Date.now() - account.lastSync < cacheAgeLimit);
 
   if (isCacheValid && !forceSync) {
