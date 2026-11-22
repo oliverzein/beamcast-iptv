@@ -1142,4 +1142,63 @@ test('external-player openLocalFileInMpv rejects directories and missing files, 
   });
 });
 
+test('re-enqueuing a failed Stage-2 item cleans up the superseded job and its retained .raw.part file', async () => {
+  await withTempDir(async (tmpDir) => {
+    let transcodeAttempt = 0;
+    const firstFailed = createDeferred();
+    const secondCompleted = createDeferred();
+    const managerWithEvents = createDownloadManager({
+      defaultBaseDir: tmpDir,
+      statfs: async () => ({ bavail: 2000000, bsize: 4096 }),
+      onStateChange: (snap) => {
+        if (snap.jobs[0]?.status === 'error') firstFailed.resolve();
+        if (snap.jobs.length === 1 && snap.jobs[0]?.status === 'completed') secondCompleted.resolve();
+      },
+      downloadFile: async ({ partPath }) => {
+        await fs.promises.writeFile(partPath, 'raw-bytes');
+        return { bytesWritten: 9, totalBytes: 9 };
+      },
+      transcodeFile: async ({ outputPath }) => {
+        transcodeAttempt += 1;
+        if (transcodeAttempt === 1) {
+          await fs.promises.writeFile(outputPath, 'broken');
+          throw new Error('transcode boom');
+        }
+        await fs.promises.writeFile(outputPath, 'good-mp4');
+        return { encoderUsed: 'libx264', remuxFallbackToH264: false };
+      },
+    });
+
+    const ep = {
+      mediaType: 'episode',
+      streamId: 'ep-101',
+      seriesName: 'Miss Fisher',
+      seasonNum: 1,
+      episodeNum: 1,
+      title: 'Pilot',
+      url: 'http://example.com/ep101.mkv',
+      sourceExt: 'mkv',
+    };
+
+    try {
+      await managerWithEvents.enqueueDownloads([ep], { structure: 'flat', preset: 'h264', hwAccel: 'cpu' });
+      await firstFailed.promise;
+
+      const filesAfterFailure = await fs.promises.readdir(tmpDir);
+      assert.strictEqual(filesAfterFailure.filter((f) => f.endsWith('.raw.part')).length, 1);
+
+      // Re-enqueue same item directly instead of calling retryJob
+      const second = await managerWithEvents.enqueueDownloads([ep], { structure: 'flat', preset: 'h264', hwAccel: 'cpu' });
+      assert.strictEqual(second.added, 1);
+      await secondCompleted.promise;
+
+      const filesAfterSuccess = await fs.promises.readdir(tmpDir);
+      assert.deepStrictEqual(filesAfterSuccess, ['Miss Fisher - S01E01.mp4']);
+    } finally {
+      await managerWithEvents.shutdown();
+    }
+  });
+});
+
+
 
