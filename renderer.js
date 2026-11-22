@@ -50,9 +50,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupTranscodeStatusListener();
   setupMpvIntegrations();
   setupSettingsIpc();
+  window.DownloadUI?.init();
 
   // Restore previously loaded provider and stream
   await restoreLastState();
+  window.DownloadUI?.refreshVisibility?.();
 });
 
 // Load Preset M3U Channels
@@ -64,6 +66,7 @@ function loadPresetChannels(list) {
   videoContainer.style.display = 'flex';
   
   if (btnToggleGuide) btnToggleGuide.style.display = 'none';
+  window.DownloadUI?.refreshVisibility?.();
   
   localStorage.setItem('lastSelectedCategory', 'all');
   

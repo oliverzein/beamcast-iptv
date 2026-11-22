@@ -60,6 +60,7 @@
         </div>
         <div class="top-bar-right" style="display: flex; align-items: center; gap: 12px;">
           <div id="playback-badge" class="playback-badge" style="display: none;"></div>
+          <button id="btn-downloads" class="btn-sm btn-sm-cyan" style="display: none;">⬇ Downloads <span id="downloads-badge-count" class="badge-count" style="display: none;">0</span></button>
           <button id="btn-toggle-always-mpv" class="btn-sm btn-sm-secondary" style="display: flex; align-items: center; gap: 6px;">🎬 MPV Mode: OFF</button>
           <button id="btn-toggle-guide" class="btn-sm btn-sm-secondary" style="display: none; align-items: center; gap: 6px;">📅 TV Guide</button>
           <div class="status-indicator">
@@ -410,6 +411,146 @@
     </div>
   </div>
 
+  <!-- Download Options Modal (hidden by default) -->
+  <div class="modal-overlay" id="download-options-modal" style="display: none;">
+    <div class="modal-card download-options-card">
+      <div class="modal-header">
+        <h2>Download starten</h2>
+        <button type="button" id="btn-close-download-options" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="target-summary">
+          <div class="target-summary-text">
+            <div id="dl-opt-target-title" class="target-title">—</div>
+            <div id="dl-opt-target-sub" class="target-sub">Quelle: Xtream VOD</div>
+          </div>
+          <span id="dl-opt-target-pill" class="target-pill">1 Datei</span>
+        </div>
+
+        <div>
+          <span class="section-label">Qualität &amp; Format Preset</span>
+          <div class="preset-grid" id="dl-opt-preset-grid">
+            <div class="preset-card active" data-preset="hevc" data-scale="true">
+              <div class="preset-title-row">
+                <span>Handy Kompakt (HEVC)</span>
+                <span class="preset-rec">Empfohlen</span>
+              </div>
+              <div class="preset-desc">H.265 VAAPI · AAC Stereo · ~1–2 GB statt 10 GB · Ideal für Mobilgeräte</div>
+            </div>
+
+            <div class="preset-card" data-preset="h264" data-scale="true">
+              <div class="preset-title-row">
+                <span>Handy Kompatibel (H.264)</span>
+              </div>
+              <div class="preset-desc">H.264 VAAPI · AAC Stereo · Maximale Geräte-Kompatibilität</div>
+            </div>
+
+            <div class="preset-card" data-preset="remux" data-scale="false">
+              <div class="preset-title-row">
+                <span>Audio/Container-Remux</span>
+              </div>
+              <div class="preset-desc">Video 1:1 kopieren, AC3/DTS nach AAC · Sekundenschnell</div>
+            </div>
+
+            <div class="preset-card" data-preset="original" data-scale="false">
+              <div class="preset-title-row">
+                <span>Original (1:1)</span>
+              </div>
+              <div class="preset-desc">Kein Transcoding · Original .mkv/.mp4 unverändert</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="section-label">Zielauflösung</span>
+          <div id="dl-opt-res-segmented" class="segmented">
+            <button type="button" class="seg-btn" data-res="original">Original</button>
+            <button type="button" class="seg-btn active" data-res="1080p">1080p</button>
+            <button type="button" class="seg-btn" data-res="720p">720p</button>
+          </div>
+        </div>
+
+        <div class="info-chips">
+          <span class="info-chip">🔊 Tonspur: <strong>Deutsch bevorzugt (AAC 160k Stereo)</strong></span>
+          <span class="info-chip">💬 Untertitel: <strong>Keine</strong></span>
+          <span class="info-chip">⚡ Hardware: <strong id="dl-opt-hw-label">VAAPI Auto / CPU</strong></span>
+        </div>
+
+        <div>
+          <span class="section-label">Zielpfad-Vorschau</span>
+          <div class="path-preview-row">
+            <div id="dl-opt-path-preview" class="path-box" title="">—</div>
+            <button type="button" id="btn-dl-opt-folder" class="btn-sm btn-sm-secondary">Ordner...</button>
+          </div>
+        </div>
+
+        <label class="checkbox-inline">
+          <input type="checkbox" id="dl-opt-remember">
+          Als Standard-Preset merken
+        </label>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-note">2-Stufen-Pipeline: erst Download, dann lokales Transcoding</span>
+        <div class="modal-footer-actions">
+          <button type="button" id="btn-dl-opt-cancel" class="btn btn-secondary">Abbrechen</button>
+          <button type="button" id="btn-dl-opt-start" class="btn btn-primary">⬇ Download starten</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download Conflict Modal (hidden by default) -->
+  <div class="modal-overlay" id="download-conflict-modal" style="display: none;">
+    <div class="modal-card download-conflict-card">
+      <div class="modal-header">
+        <h2>Vorhandene Dateien gefunden</h2>
+        <button type="button" id="btn-close-download-conflict" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="dl-conflict-summary" class="conflict-summary">Folgende Zieldateien existieren bereits:</p>
+        <ul id="dl-conflict-list" class="conflict-list"></ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-conflict-cancel" class="btn btn-secondary">Abbrechen</button>
+        <div class="modal-footer-actions">
+          <button type="button" id="btn-conflict-skip" class="btn btn-secondary">Überspringen</button>
+          <button type="button" id="btn-conflict-rename" class="btn btn-cyan-outline">Alle umbenennen</button>
+          <button type="button" id="btn-conflict-overwrite" class="btn btn-danger">Überschreiben</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Download Manager Modal (hidden by default) -->
+  <div class="modal-overlay" id="downloads-modal" style="display: none;">
+    <div class="modal-card downloads-manager-card">
+      <div class="modal-header">
+        <h2>Downloads</h2>
+        <button type="button" id="btn-close-downloads-modal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="manager-summary">
+          <span id="downloads-summary-text">Keine Downloads in der Warteschlange</span>
+          <div class="filter-pills" id="downloads-filter-pills">
+            <button type="button" class="filter-pill active" data-filter="all">Alle (<span id="dl-count-all">0</span>)</button>
+            <button type="button" class="filter-pill" data-filter="active">Aktiv (<span id="dl-count-active">0</span>)</button>
+            <button type="button" class="filter-pill" data-filter="done">Fertig (<span id="dl-count-done">0</span>)</button>
+          </div>
+        </div>
+
+        <div class="queue-list" id="downloads-queue-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-downloads-open-folder" class="btn btn-secondary">📁 Zielordner öffnen</button>
+        <div class="modal-footer-actions">
+          <button type="button" id="btn-downloads-clear-completed" class="btn btn-secondary">Fertige leeren</button>
+          <button type="button" id="btn-downloads-cancel-all" class="btn btn-danger">Alle abbrechen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Load dependencies -->
   <script src="node_modules/mpegts.js/dist/mpegts.js"></script>
   <script src="db.js"></script>
@@ -421,7 +562,22 @@
   <script src="lib/epg-prefetch.js"></script>
   <script src="renderer-epg.js"></script>
   <script src="renderer-settings.js"></script>
+  <script src="renderer-downloads.js"></script>
   <script src="renderer.js"></script>
+
+  <!-- Download status bar -->
+  <div id="download-status-bar" class="download-status-bar" style="display: none;">
+    <div class="dsb-top">
+      <div class="dsb-info" id="dsb-info-text"></div>
+      <div class="dsb-actions">
+        <button type="button" id="btn-dsb-queue" class="btn-sm btn-sm-secondary">Queue (0)</button>
+        <button type="button" id="btn-dsb-dismiss" class="btn-sm btn-sm-secondary" title="Leiste ausblenden">✕</button>
+      </div>
+    </div>
+    <div class="progress-track">
+      <div id="dsb-progress-fill" class="progress-fill-cyan" style="width: 0%;"></div>
+    </div>
+  </div>
 
   <!-- MPV status bar -->
   <div id="mpv-status-bar" class="mpv-status-bar" style="display: none;">
