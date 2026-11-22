@@ -700,3 +700,187 @@ test('downloadFile: handles non-retryable 401/410, relative Location redirects, 
     await stuck206Mock.close();
   }
 });
+
+test('downloadFile: truncates partPath cleanly on overlapping 206 Content-Range (0 < start < legStartOffset)', async () => {
+  const payload = Buffer.alloc(1024);
+  for (let i = 0; i < payload.length; i++) payload[i] = (i * 11) & 0xff;
+  let attempts = 0;
+  const seenRanges = [];
+
+  const mock = await startMockServer((req, res) => {
+    attempts += 1;
+    seenRanges.push(req.headers.range || null);
+    if (attempts === 1) {
+      res.writeHead(200, {
+        'Content-Length': String(payload.length),
+        'Accept-Ranges': 'bytes',
+      });
+      res.write(payload.subarray(0, 320));
+      setTimeout(() => res.socket.destroy(), 15);
+      return;
+    }
+
+    // Server aligns resume offset down to 256 despite Range: bytes=320-
+    const slice = payload.subarray(256);
+    res.writeHead(206, {
+      'Content-Range': `bytes 256-1023/${payload.length}`,
+      'Content-Length': String(slice.length),
+    });
+    res.end(slice);
+  });
+
+  try {
+    await withTempDir(async (dir) => {
+      const partPath = path.join(dir, 'overlap206.raw.part');
+      const result = await downloadFile({
+        url: `${mock.baseUrl}/movie/u/p/88.mkv`,
+        partPath,
+        retryBaseDelayMs: 5,
+      });
+
+      assert.strictEqual(attempts, 2);
+      assert.deepStrictEqual(seenRanges, [null, 'bytes=320-']);
+      assert.deepStrictEqual(result, { bytesWritten: 1024, totalBytes: 1024 });
+      const written = await fs.promises.readFile(partPath);
+      assert.strictEqual(written.length, 1024);
+      assert.deepStrictEqual(written, payload);
+    });
+  } finally {
+    await mock.close();
+  }
+});
+
+test('downloadFile: handles socket error during truncate without unhandled errors', async () => {
+  const payload = Buffer.alloc(1024);
+  for (let i = 0; i < payload.length; i++) payload[i] = (i * 5 + 3) & 0xff;
+
+  const sockets = new Set();
+  let attempts = 0;
+  let onTruncateAttempt2 = null;
+
+  const errorDuringTruncateMock = await startMockServer((req, res) => {
+    sockets.add(res.socket);
+    res.socket.on('close', () => sockets.delete(res.socket));
+    attempts += 1;
+
+    if (attempts === 1) {
+      res.writeHead(200, {
+        'Content-Length': String(payload.length),
+        'Accept-Ranges': 'bytes',
+      });
+      res.write(payload.subarray(0, 320));
+      setTimeout(() => res.socket.destroy(), 15);
+      return;
+    }
+
+    if (attempts === 2) {
+      res.writeHead(206, {
+        'Content-Range': `bytes 256-1023/${payload.length}`,
+        'Content-Length': '768',
+      });
+      res.flushHeaders();
+      onTruncateAttempt2 = () => {
+        res.socket.destroy(new Error('forced reset during truncate'));
+      };
+      return;
+    }
+
+    const start = Number(/^bytes=(\d+)-$/.exec(req.headers.range || '')[1]);
+    const slice = payload.subarray(start);
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-1023/${payload.length}`,
+      'Content-Length': String(slice.length),
+    });
+    res.end(slice);
+  });
+
+  const origTruncate = fs.promises.truncate;
+  try {
+    await withTempDir(async (dir) => {
+      let intercepted = false;
+      fs.promises.truncate = async (target, len) => {
+        if (!intercepted) {
+          intercepted = true;
+          onTruncateAttempt2?.();
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        return origTruncate.call(fs.promises, target, len);
+      };
+
+      const partPath = path.join(dir, 'err-during-truncate.raw.part');
+      const result = await downloadFile({
+        url: `${errorDuringTruncateMock.baseUrl}/movie/u/p/100.mkv`,
+        partPath,
+        retryBaseDelayMs: 5,
+      });
+
+      assert.strictEqual(intercepted, true);
+      assert.strictEqual(attempts, 3);
+      assert.deepStrictEqual(result, { bytesWritten: 1024, totalBytes: 1024 });
+      assert.deepStrictEqual(await fs.promises.readFile(partPath), payload);
+    });
+  } finally {
+    fs.promises.truncate = origTruncate;
+    for (const s of sockets) s.destroy();
+    await errorDuringTruncateMock.close();
+  }
+});
+
+test('downloadFile: rejects immediately on AbortSignal during truncate', async () => {
+  const payload = Buffer.alloc(1024);
+  for (let i = 0; i < payload.length; i++) payload[i] = (i * 5 + 3) & 0xff;
+
+  const sockets = new Set();
+  let abortAttempts = 0;
+  const abortMock = await startMockServer((req, res) => {
+    sockets.add(res.socket);
+    res.socket.on('close', () => sockets.delete(res.socket));
+    abortAttempts += 1;
+
+    if (abortAttempts === 1) {
+      res.writeHead(200, {
+        'Content-Length': String(payload.length),
+        'Accept-Ranges': 'bytes',
+      });
+      res.write(payload.subarray(0, 320));
+      setTimeout(() => res.socket.destroy(), 15);
+      return;
+    }
+
+    res.writeHead(206, {
+      'Content-Range': `bytes 256-1023/${payload.length}`,
+      'Content-Length': '768',
+    });
+    res.flushHeaders();
+  });
+
+  const origTruncate = fs.promises.truncate;
+  try {
+    await withTempDir(async (dir) => {
+      const controller = new AbortController();
+      let abortedDuringTruncate = false;
+      fs.promises.truncate = async (target, len) => {
+        abortedDuringTruncate = true;
+        controller.abort();
+        await new Promise((r) => setTimeout(r, 15));
+        return origTruncate.call(fs.promises, target, len);
+      };
+
+      await assert.rejects(
+        () => downloadFile({
+          url: `${abortMock.baseUrl}/movie/u/p/101.mkv`,
+          partPath: path.join(dir, 'abort-during-truncate.raw.part'),
+          signal: controller.signal,
+          retryBaseDelayMs: 5,
+        }),
+        (err) => err && err.name === 'AbortError'
+      );
+      assert.strictEqual(abortedDuringTruncate, true);
+      assert.strictEqual(abortAttempts, 2);
+    });
+  } finally {
+    fs.promises.truncate = origTruncate;
+    for (const s of sockets) s.destroy();
+    await abortMock.close();
+  }
+});
