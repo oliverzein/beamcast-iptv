@@ -294,28 +294,113 @@
 
   <!-- User Settings Modal (hidden by default) -->
   <div class="modal-overlay" id="settings-modal" style="display: none;">
-    <div class="modal-card" style="max-width: 480px;">
+    <div class="modal-card" style="max-width: 620px;">
       <div class="modal-header">
         <h2>Settings</h2>
         <button id="btn-close-settings" class="close-btn">&times;</button>
       </div>
       <div class="modal-body">
         <form id="settings-form" onsubmit="return false;">
-          <div class="form-group">
-            <label for="set-concurrency">EPG prefetch concurrency</label>
-            <input type="number" id="set-concurrency" min="1" max="10" step="1">
-            <small class="form-hint">Parallel channel EPG fetches (1-10)</small>
-          </div>
-          <div class="form-group">
-            <label for="set-cache">Cache age limit (hours)</label>
-            <input type="number" id="set-cache" min="1" max="168" step="1">
-            <small class="form-hint">Hours before cached data is considered stale</small>
-          </div>
-          <div class="form-group">
-            <label for="set-historic">EPG historic filter (days)</label>
-            <input type="number" id="set-historic" min="1" max="30" step="1">
-            <small class="form-hint">Days of past EPG to retain</small>
-          </div>
+          <section class="settings-section">
+            <h3 class="settings-section-head">EPG &amp; Cache</h3>
+            <div class="settings-grid">
+              <div class="form-group">
+                <label for="set-concurrency">EPG prefetch concurrency</label>
+                <input type="number" id="set-concurrency" min="1" max="10" step="1">
+                <small class="form-hint">Parallel channel EPG fetches (1-10)</small>
+              </div>
+              <div class="form-group">
+                <label for="set-cache">Cache age limit (hours)</label>
+                <input type="number" id="set-cache" min="1" max="168" step="1">
+                <small class="form-hint">Hours before cached data is considered stale</small>
+              </div>
+              <div class="form-group full">
+                <label for="set-historic">EPG historic filter (days)</label>
+                <input type="number" id="set-historic" min="1" max="30" step="1">
+                <small class="form-hint">Days of past EPG to retain</small>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="settings-section-head">Downloads &amp; Transcoding</h3>
+            <div class="settings-grid">
+              <div class="form-group full">
+                <label for="set-download-dir">Download-Ordner</label>
+                <div class="path-input-row">
+                  <input type="text" id="set-download-dir" placeholder="">
+                  <button type="button" id="btn-browse-download-dir" class="btn btn-secondary">Durchsuchen...</button>
+                </div>
+                <small class="form-hint">Zielverzeichnis für heruntergeladene Filme und Serien</small>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-structure">Ordnerstruktur</label>
+                <div class="select-wrapper">
+                  <select id="set-download-structure">
+                    <option value="structured">Strukturiert (Movies / Series)</option>
+                    <option value="flat">Flach (Direkt im Zielordner)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-preset">Standard-Preset</label>
+                <div class="select-wrapper">
+                  <select id="set-download-preset">
+                    <option value="hevc">Handy Kompakt (HEVC / MP4)</option>
+                    <option value="h264">Handy Kompatibel (H.264 / MP4)</option>
+                    <option value="remux">Audio/Container-Remux (MP4)</option>
+                    <option value="original">Original (1:1)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-resolution">Standard-Auflösung</label>
+                <div class="select-wrapper">
+                  <select id="set-download-resolution">
+                    <option value="1080p">1080p (Full HD)</option>
+                    <option value="720p">720p (HD)</option>
+                    <option value="original">Original</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-click-action">Klick-Aktion (⬇ Button)</label>
+                <div class="select-wrapper">
+                  <select id="set-download-click-action">
+                    <option value="dialog">Options-Dialog anzeigen</option>
+                    <option value="instant">Sofort herunterladen</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-duplicate">Bei vorhandenen Dateien</label>
+                <div class="select-wrapper">
+                  <select id="set-download-duplicate">
+                    <option value="ask">Nachfragen</option>
+                    <option value="skip">Überspringen</option>
+                    <option value="rename">Umbenennen</option>
+                    <option value="overwrite">Überschreiben</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="set-download-hwaccel">Hardware-Beschleunigung</label>
+                <div class="select-wrapper">
+                  <select id="set-download-hwaccel">
+                    <option value="auto">Automatisch (VAAPI / CPU Fallback)</option>
+                    <option value="cpu">Nur CPU (libx265 / libx264)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div class="form-actions-row">
             <button type="button" id="btn-reset-settings" class="btn btn-secondary">Reset to defaults</button>
             <button type="button" id="btn-save-settings" class="btn btn-primary">Save</button>

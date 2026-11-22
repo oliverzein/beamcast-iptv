@@ -1773,7 +1773,90 @@ input[type="range"]::-webkit-slider-thumb:hover {
   color: #ff453a;
 }
 input.invalid,
-input[type="number"].invalid {
+input[type="number"].invalid,
+select.invalid {
   border-color: #ff453a;
   outline-color: #ff453a;
+}
+
+/* Settings Modal Layout & Download Controls */
+#settings-modal .modal-body {
+  grid-template-columns: 1fr;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-section:last-of-type {
+  margin-bottom: 14px;
+}
+
+.settings-section-head {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-cyan);
+  margin: 0;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.settings-grid .form-group {
+  margin-bottom: 0;
+}
+
+.form-group.full {
+  grid-column: 1 / -1;
+}
+
+.path-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.path-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.path-input-row .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.form-group select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  padding: 10px 32px 10px 12px;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  transition: all 0.3s ease;
+}
+
+.form-group select:focus {
+  border-color: var(--accent-cyan);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 560px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
 }
