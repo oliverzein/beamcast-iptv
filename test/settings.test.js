@@ -229,6 +229,16 @@ test('AppSettings: download schema defaults and enum/string validation', async (
 
   await AppSettings.set('downloadDir', '/tmp/vod');
   assert.strictEqual(AppSettings.get('downloadDir'), '/tmp/vod');
+  await AppSettings.set('downloadDir', '  /tmp/vod-trimmed  ');
+  assert.strictEqual(AppSettings.get('downloadDir'), '/tmp/vod-trimmed');
+  await AppSettings.set('downloadDir', '   ');
+  assert.strictEqual(AppSettings.get('downloadDir'), '');
+  await AppSettings.set('downloadDir', 'C:\\Users\\Test\\Downloads');
+  assert.strictEqual(AppSettings.get('downloadDir'), 'C:\\Users\\Test\\Downloads');
+  await AppSettings.set('downloadDir', 'D:/Videos');
+  assert.strictEqual(AppSettings.get('downloadDir'), 'D:/Videos');
+  await AppSettings.set('downloadDir', '');
+  assert.strictEqual(AppSettings.get('downloadDir'), '');
   await AppSettings.set('downloadFolderStructure', 'flat');
   assert.strictEqual(AppSettings.get('downloadFolderStructure'), 'flat');
   await AppSettings.set('downloadDefaultPreset', 'h264');
@@ -247,6 +257,11 @@ test('AppSettings: download schema defaults and enum/string validation', async (
   await assert.rejects(() => AppSettings.set('downloadDefaultPreset', 'avi'), RangeError);
   await assert.rejects(() => AppSettings.set('downloadDefaultPreset', 123), TypeError);
   await assert.rejects(() => AppSettings.set('downloadDir', 123), TypeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', 'movies'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', '../../etc'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', './relative/dir'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', 'C:relative'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', '/tmp/\0bad'), RangeError);
   await assert.rejects(() => AppSettings.set('downloadHwAccel', '/dev/null'), RangeError);
   await assert.rejects(() => AppSettings.set('downloadHwAccel', 42), TypeError);
 

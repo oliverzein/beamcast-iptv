@@ -193,6 +193,9 @@ function validateSettingValue(key, meta, raw, defaultDir) {
       if (!trimmed || (defaultDir && normalizeDirPath(trimmed) === normalizeDirPath(defaultDir))) {
         return { ok: true, value: '' };
       }
+      if (trimmed.includes('\0') || !/^(?:\/|\\\\[^\\/]|[a-zA-Z]:[\\/])/.test(trimmed)) {
+        return { ok: false, error: 'Download-Ordner muss ein absoluter Pfad sein' };
+      }
       return { ok: true, value: trimmed };
     }
     const val = String(raw ?? '');
@@ -207,7 +210,8 @@ function validateSettingValue(key, meta, raw, defaultDir) {
 
 async function saveSettings() {
   const defaultDir = cachedDefaultDownloadDir || (await resolveDefaultDownloadDir());
-  let allOk = true;
+  const pendingWrites = [];
+  let allValid = true;
 
   for (const [key, meta] of Object.entries(FORM_SCHEMA)) {
     const input = document.getElementById(meta.el);
@@ -216,18 +220,25 @@ async function saveSettings() {
     const check = validateSettingValue(key, meta, raw, defaultDir);
     if (!check.ok) {
       setError(input, check.error);
-      allOk = false;
+      allValid = false;
       continue;
     }
+    pendingWrites.push({ key, input, value: check.value });
+  }
+
+  if (!allValid) return;
+
+  let allSaved = true;
+  for (const { key, input, value } of pendingWrites) {
     try {
-      await AppSettings.set(key, check.value);
+      await AppSettings.set(key, value);
     } catch (err) {
       setError(input, (err && err.message) || 'Save failed');
-      allOk = false;
+      allSaved = false;
     }
   }
 
-  if (allOk) closeSettingsModal();
+  if (allSaved) closeSettingsModal();
 }
 
 function resetSettings() {

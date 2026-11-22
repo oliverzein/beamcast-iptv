@@ -940,8 +940,11 @@ function createEpisodeCard(ep, seasonNum) {
   });
 })();
 
+let seriesLoadSeq = 0;
+
 // Loads Season/Episodes selector grid
 async function loadSeriesEpisodes(seriesItem) {
+  const seq = ++seriesLoadSeq;
   if (activePlaylistType === 'xtream') {
     localStorage.setItem('lastSelectedId_series', seriesItem.seriesId);
   }
@@ -971,6 +974,7 @@ async function loadSeriesEpisodes(seriesItem) {
 
   try {
     const seriesInfo = await fetchXtreamApi(activeAccount, 'get_series_info', { series_id: seriesItem.seriesId });
+    if (seq !== seriesLoadSeq) return;
     activeSeriesData = seriesInfo;
     activeSeriesData.seriesId = seriesItem.seriesId;
 
@@ -1015,6 +1019,7 @@ async function loadSeriesEpisodes(seriesItem) {
     }
 
   } catch (err) {
+    if (seq !== seriesLoadSeq) return;
     console.error('Failed to load series info:', err);
     seriesPlot.textContent = "Failed to load details.";
     episodesGrid.innerHTML = '<div class="empty-list-placeholder">Error loading episodes.</div>';

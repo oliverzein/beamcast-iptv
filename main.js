@@ -20,6 +20,7 @@ let mainWindow;
 let activeStream = null;
 let isClosingConfirmed = false;
 let isClosePromptOpen = false;
+let isQuitting = false;
 
 function createWindow() {
   isClosingConfirmed = false;
@@ -69,6 +70,12 @@ function createWindow() {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy();
         }
+      }
+    } catch (err) {
+      console.error('Error during close confirmation/shutdown:', err);
+      isClosingConfirmed = true;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.destroy();
       }
     } finally {
       isClosePromptOpen = false;
@@ -207,11 +214,19 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('will-quit', () => {
+app.on('will-quit', (e) => {
+  if (isQuitting) return;
+  isQuitting = true;
+  e.preventDefault();
   proxy.stop();
-  downloadManager.shutdown().catch((err) => {
-    console.error('Error shutting down download manager:', err);
-  });
+  downloadManager
+    .shutdown()
+    .catch((err) => {
+      console.error('Error shutting down download manager:', err);
+    })
+    .finally(() => {
+      app.quit();
+    });
 });
 
 app.on('activate', () => {

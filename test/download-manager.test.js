@@ -924,9 +924,8 @@ test('duplicateAction overwrite overwrites disk files but never shares finalPath
       ],
       { baseDir: tmpDir, structure: 'structured', preset: 'original', duplicateAction: 'overwrite' }
     );
-    if (second.added === 1) {
-      assert.notStrictEqual(second.jobs[0].finalPath, existingDiskPath);
-    }
+    assert.strictEqual(second.added, 1);
+    assert.notStrictEqual(second.jobs[0].finalPath, existingDiskPath);
 
     // Same-batch collision with overwrite must produce distinct finalPaths for active jobs
     const batch = await manager.enqueueDownloads(
@@ -950,9 +949,196 @@ test('duplicateAction overwrite overwrites disk files but never shares finalPath
     );
     const activePaths = manager.getStateSnapshot().jobs.map((j) => j.finalPath);
     assert.strictEqual(new Set(activePaths).size, activePaths.length);
-    assert.ok(batch.added >= 1);
+    assert.strictEqual(batch.added, 2);
 
     await manager.shutdown();
+  });
+});
+
+test('downloadDir validation rejects relative paths and null bytes across checkConflicts, enqueueDownloads, and open-folder', async () => {
+  await withTempDir(async (tmpDir) => {
+    const manager = createDownloadManager({ defaultBaseDir: tmpDir });
+    const movie = { itemKey: 'm:rel', mediaType: 'movie', title: 'Test', url: 'http://x.test/1.mkv', sourceExt: 'mkv' };
+
+    for (const badDir of ['movies', '../../etc', './local', '/tmp/\0bad']) {
+      await assert.rejects(
+        () => manager.checkConflicts([movie], { baseDir: badDir }),
+        /absoluter Pfad/
+      );
+      await assert.rejects(
+        () => manager.enqueueDownloads([movie], { baseDir: badDir }),
+        /absoluter Pfad/
+      );
+      await assert.rejects(
+        () => manager.enqueueDownloads([movie], { downloadDir: badDir }),
+        /absoluter Pfad/
+      );
+    }
+    assert.strictEqual(manager.getStateSnapshot().jobs.length, 0);
+
+    // openDownloadTarget via IPC catches relative paths and mkdir errors cleanly
+    const electronPath = require.resolve('electron');
+    const dmPath = require.resolve('../lib/download-manager.js');
+    const prevElectronEntry = require.cache[electronPath];
+    const prevDmEntry = require.cache[dmPath];
+    const registeredHandlers = new Map();
+
+    require.cache[electronPath] = {
+      id: electronPath,
+      filename: electronPath,
+      loaded: true,
+      exports: {
+        dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+        ipcMain: {
+          handle: (channel, fn) => registeredHandlers.set(channel, fn),
+          removeHandler: (channel) => registeredHandlers.delete(channel),
+        },
+        shell: { showItemInFolder: () => {}, openPath: async () => '' },
+      },
+    };
+    delete require.cache[dmPath];
+
+    try {
+      const dm = require('../lib/download-manager.js');
+      dm.init(() => null, { getPath: () => tmpDir });
+      const openFolder = registeredHandlers.get('download:open-folder');
+
+      const relRes = await openFolder({}, 'movies');
+      assert.strictEqual(relRes.ok, false);
+      assert.match(relRes.error, /absoluter Pfad/);
+
+      const blockingFile = path.join(tmpDir, 'not-a-dir');
+      await fs.promises.writeFile(blockingFile, 'occupied');
+      const mkdirFailRes = await openFolder({}, path.join(blockingFile, 'sub', 'Movie.mp4'));
+      assert.strictEqual(mkdirFailRes.ok, false);
+      assert.ok(typeof mkdirFailRes.error === 'string' && mkdirFailRes.error.length > 0);
+
+      await dm.shutdown();
+    } finally {
+      if (prevElectronEntry) require.cache[electronPath] = prevElectronEntry;
+      else delete require.cache[electronPath];
+      if (prevDmEntry) require.cache[dmPath] = prevDmEntry;
+      else delete require.cache[dmPath];
+    }
+  });
+});
+
+test('hasActiveJobs returns true while retryJob is in-flight and cancelJob aborts pending retry cleanly', async () => {
+  await withTempDir(async (tmpDir) => {
+    const unlinkEntered = createDeferred();
+    const unlinkRelease = createDeferred();
+    let transcodeCalls = 0;
+    let retryStarted = false;
+
+    const manager = createDownloadManager({
+      defaultBaseDir: tmpDir,
+      statfs: async () => ({ bavail: 2000000, bsize: 4096 }),
+      unlink: async (filePath) => {
+        if (retryStarted && filePath.endsWith('.transcode.part.mp4')) {
+          unlinkEntered.resolve();
+          await unlinkRelease.promise;
+        }
+        try {
+          await fs.promises.unlink(filePath);
+        } catch {
+          // ignore ENOENT
+        }
+      },
+      downloadFile: async ({ partPath }) => {
+        await fs.promises.writeFile(partPath, 'raw-bytes');
+        return { bytesWritten: 9, totalBytes: 9 };
+      },
+      transcodeFile: async ({ outputPath }) => {
+        transcodeCalls += 1;
+        await fs.promises.writeFile(outputPath, 'tc');
+        throw new Error('transcode boom');
+      },
+    });
+
+    const { jobs } = await manager.enqueueDownloads(
+      [{ itemKey: 'm:retry-cancel', mediaType: 'movie', title: 'Retry Cancel', url: 'http://x.test/1.mkv', sourceExt: 'mkv' }],
+      { baseDir: tmpDir, preset: 'hevc' }
+    );
+    const jobId = jobs[0].id;
+    await new Promise((r) => setTimeout(r, 40));
+
+    assert.strictEqual(manager.getStateSnapshot().jobs[0].status, 'error');
+    assert.strictEqual(manager.hasActiveJobs(), false);
+
+    retryStarted = true;
+    const retryPromise = manager.retryJob(jobId);
+    await unlinkEntered.promise;
+
+    // While retryJob is awaiting unlink (meta.retrying === true), hasActiveJobs must be true
+    assert.strictEqual(manager.hasActiveJobs(), true);
+
+    await manager.cancelJob(jobId);
+    unlinkRelease.resolve();
+    const retried = await retryPromise;
+
+    assert.strictEqual(retried, false);
+    assert.strictEqual(transcodeCalls, 1);
+    assert.strictEqual(manager.hasActiveJobs(), false);
+  });
+});
+
+test('external-player openLocalFileInMpv rejects directories and missing files, launches regular files', async () => {
+  await withTempDir(async (tmpDir) => {
+    const regularFile = path.join(tmpDir, 'video.mp4');
+    await fs.promises.writeFile(regularFile, 'data');
+
+    const electronPath = require.resolve('electron');
+    const cpPath = require.resolve('child_process');
+    const epPath = require.resolve('../lib/external-player.js');
+    const prevElectron = require.cache[electronPath];
+    const prevCp = require.cache[cpPath];
+    const prevEp = require.cache[epPath];
+    const origCp = require('child_process');
+    const spawnCalls = [];
+
+    require.cache[electronPath] = {
+      id: electronPath,
+      filename: electronPath,
+      loaded: true,
+      exports: { ipcMain: { on: () => {} }, Menu: {}, BrowserWindow: {}, dialog: { showErrorBox: () => {} } },
+    };
+    require.cache[cpPath] = {
+      id: cpPath,
+      filename: cpPath,
+      loaded: true,
+      exports: {
+        ...origCp,
+        spawn: (cmd, args) => {
+          spawnCalls.push({ cmd, args });
+          return { on: () => {}, unref: () => {} };
+        },
+      },
+    };
+    delete require.cache[epPath];
+
+    try {
+      const { openLocalFileInMpv } = require('../lib/external-player.js');
+
+      const dirRes = openLocalFileInMpv(tmpDir);
+      assert.strictEqual(dirRes.ok, false);
+      assert.match(dirRes.error, /nicht gefunden/);
+
+      const missingRes = openLocalFileInMpv(path.join(tmpDir, 'missing.mp4'));
+      assert.strictEqual(missingRes.ok, false);
+      assert.match(missingRes.error, /nicht gefunden/);
+      assert.strictEqual(spawnCalls.length, 0);
+
+      const fileRes = openLocalFileInMpv(regularFile);
+      assert.strictEqual(fileRes.ok, true);
+      assert.deepStrictEqual(spawnCalls, [{ cmd: 'mpv', args: [regularFile] }]);
+    } finally {
+      if (prevElectron) require.cache[electronPath] = prevElectron;
+      else delete require.cache[electronPath];
+      if (prevCp) require.cache[cpPath] = prevCp;
+      else delete require.cache[cpPath];
+      if (prevEp) require.cache[epPath] = prevEp;
+      else delete require.cache[epPath];
+    }
   });
 });
 

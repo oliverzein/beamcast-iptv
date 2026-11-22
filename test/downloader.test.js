@@ -1,11 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
+const net = require('node:net');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { redactUrl, parseContentRange, downloadFile } = require('../lib/downloader.js');
+const { redactUrl, parseContentRange, parseContentLength, downloadFile } = require('../lib/downloader.js');
 
 async function startMockServer(handler) {
   const server = http.createServer(handler);
@@ -58,6 +59,14 @@ test('redactUrl: masks credentials in userinfo, Xtream paths, query params, and 
   assert.strictEqual(
     redactUrl('/movie/myUser/myPass/123.mkv?username=x&password=y'),
     '/movie/***/***/123.mkv?username=***&password=***'
+  );
+  assert.strictEqual(
+    redactUrl('//alice:s3cr3t@iptv.example.com/movie/myUser/myPass/123.mkv'),
+    '//***:***@iptv.example.com/movie/***/***/123.mkv'
+  );
+  assert.strictEqual(
+    redactUrl('//alice@iptv.example.com/video.mkv'),
+    '//***@iptv.example.com/video.mkv'
   );
   assert.strictEqual(
     redactUrl('http://cdn.example.com/streams/public-movie.mp4'),
@@ -882,5 +891,135 @@ test('downloadFile: rejects immediately on AbortSignal during truncate', async (
     fs.promises.truncate = origTruncate;
     for (const s of sockets) s.destroy();
     await abortMock.close();
+  }
+});
+
+test('downloadFile: early initialFailure before truncate on overlapping 206 leg preserves bytesWritten on retry', async () => {
+  const payload = Buffer.alloc(1024);
+  for (let i = 0; i < payload.length; i++) payload[i] = (i * 7 + 1) & 0xff;
+
+  let attempts = 0;
+  const seenRanges = [];
+  const sockets = new Set();
+
+  const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+
+    let buf = '';
+    socket.on('data', (chunk) => {
+      buf += chunk.toString('utf8');
+      if (!buf.includes('\r\n\r\n')) return;
+      attempts += 1;
+      const rangeMatch = /^range:\s*([^\r\n]+)/im.exec(buf);
+      seenRanges.push(rangeMatch ? rangeMatch[1].trim() : null);
+
+      if (attempts === 1) {
+        const headers =
+          'HTTP/1.1 200 OK\r\n' +
+          `Content-Length: ${payload.length}\r\n` +
+          'Accept-Ranges: bytes\r\n' +
+          'Connection: close\r\n\r\n';
+        socket.write(Buffer.concat([Buffer.from(headers), payload.subarray(0, 320)]));
+        setTimeout(() => socket.destroy(), 15);
+        return;
+      }
+
+      if (attempts === 2) {
+        // Headers + malformed chunk in the same TCP read trigger early req/res error (initialFailure) before truncate()
+        const payload206 =
+          'HTTP/1.1 206 Partial Content\r\n' +
+          `Content-Range: bytes 256-1023/${payload.length}\r\n` +
+          'Transfer-Encoding: chunked\r\n' +
+          'Connection: close\r\n\r\n' +
+          'ZZZ\r\n';
+        socket.end(payload206);
+        return;
+      }
+
+      const slice = payload.subarray(256);
+      const headers =
+        'HTTP/1.1 206 Partial Content\r\n' +
+        `Content-Range: bytes 256-1023/${payload.length}\r\n` +
+        `Content-Length: ${slice.length}\r\n` +
+        'Connection: close\r\n\r\n';
+      socket.end(Buffer.concat([Buffer.from(headers), slice]));
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address();
+
+  const origTruncate = fs.promises.truncate;
+  const truncateArgsByAttempt = [];
+  fs.promises.truncate = async (target, len) => {
+    truncateArgsByAttempt.push({ attempt: attempts, len });
+    return origTruncate.call(fs.promises, target, len);
+  };
+
+  try {
+    await withTempDir(async (dir) => {
+      const partPath = path.join(dir, 'early-fail-overlap.raw.part');
+      const result = await downloadFile({
+        url: `http://127.0.0.1:${port}/movie/u/p/early.mkv`,
+        partPath,
+        retryBaseDelayMs: 5,
+      });
+
+      assert.strictEqual(attempts, 3);
+      // Attempt 2 must NOT have corrupted bytesWritten down to 256 before truncate ran
+      assert.deepStrictEqual(seenRanges, [null, 'bytes=320-', 'bytes=320-']);
+      assert.deepStrictEqual(truncateArgsByAttempt, [{ attempt: 3, len: 256 }]);
+      assert.deepStrictEqual(result, { bytesWritten: 1024, totalBytes: 1024 });
+      assert.deepStrictEqual(await fs.promises.readFile(partPath), payload);
+    });
+  } finally {
+    fs.promises.truncate = origTruncate;
+    for (const s of sockets) s.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('parseContentLength & createWriteStream: blank Content-Length returns null and synchronous createWriteStream error is nonRetryable', async () => {
+  assert.strictEqual(parseContentLength({}), null);
+  assert.strictEqual(parseContentLength({ 'content-length': '' }), null);
+  assert.strictEqual(parseContentLength({ 'content-length': '   ' }), null);
+  assert.strictEqual(parseContentLength({ 'content-length': '0' }), 0);
+  assert.strictEqual(parseContentLength({ 'content-length': '4096' }), 4096);
+  assert.strictEqual(parseContentLength({ 'content-length': '-1' }), null);
+  assert.strictEqual(parseContentLength({ 'content-length': 'abc' }), null);
+
+  let attempts = 0;
+  const mock = await startMockServer((req, res) => {
+    attempts += 1;
+    res.writeHead(200, { 'Content-Length': '10' });
+    res.end('0123456789');
+  });
+
+  const origCreateWriteStream = fs.createWriteStream;
+  try {
+    await withTempDir(async (dir) => {
+      fs.createWriteStream = () => {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      };
+      await assert.rejects(
+        () => downloadFile({
+          url: `${mock.baseUrl}/disk-fail.mkv`,
+          partPath: path.join(dir, 'disk-fail.raw.part'),
+          maxRetries: 3,
+          retryBaseDelayMs: 5,
+        }),
+        (err) => err && err.nonRetryable === true && /EACCES/.test(err.message)
+      );
+      assert.strictEqual(attempts, 1);
+    });
+  } finally {
+    fs.createWriteStream = origCreateWriteStream;
+    await mock.close();
   }
 });

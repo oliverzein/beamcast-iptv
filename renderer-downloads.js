@@ -170,6 +170,27 @@ function dlFormatEta(etaSec) {
   return remMin > 0 ? `~${hrs}h ${remMin}m` : `~${hrs}h`;
 }
 
+function dlIsValidBaseDir(dir) {
+  if (dir === undefined || dir === null) return true;
+  if (typeof dir !== 'string') return false;
+  const trimmed = dir.trim();
+  if (!trimmed) return true;
+  if (trimmed.includes('\0')) return false;
+  return /^(?:\/|\\\\[^\\/]|[a-zA-Z]:[\\/])/.test(trimmed);
+}
+
+function dlMergeOptions(defaults, overrides = {}) {
+  const rawBaseDir = overrides.baseDir !== undefined ? overrides.baseDir : defaults.baseDir;
+  if (!dlIsValidBaseDir(rawBaseDir)) {
+    throw new Error('Download-Ordner muss ein absoluter Pfad sein');
+  }
+  return {
+    ...defaults,
+    ...overrides,
+    baseDir: typeof rawBaseDir === 'string' ? rawBaseDir.trim() : '',
+  };
+}
+
 function dlReadDefaultOptions(AppSettings) {
   return {
     baseDir: AppSettings?.get?.('downloadDir', '') || '',
@@ -241,12 +262,7 @@ function createDownloadController({
   }
 
   async function runEnqueueWithConflictCheck(items, options = {}) {
-    const defaults = dlReadDefaultOptions(AppSettings);
-    const effectiveOptions = {
-      ...defaults,
-      ...options,
-      baseDir: options.baseDir !== undefined ? options.baseDir : defaults.baseDir,
-    };
+    const effectiveOptions = dlMergeOptions(dlReadDefaultOptions(AppSettings), options);
 
     const strategy = await resolveDuplicateStrategy(items, effectiveOptions);
     if (strategy === 'cancel') return { cancelled: true, added: 0, jobs: [] };
@@ -278,15 +294,11 @@ function createDownloadController({
       return { cancelled: true, added: 0, jobs: [] };
     }
 
+    const mergedOptions = dlMergeOptions(defaultOptions, modalResult.options);
     if (modalResult.rememberDefaults) {
       await dlPersistRememberedDefaults(AppSettings, modalResult.options);
     }
 
-    const mergedOptions = {
-      ...defaultOptions,
-      ...modalResult.options,
-      baseDir: modalResult.options.baseDir !== undefined ? modalResult.options.baseDir : defaultOptions.baseDir,
-    };
     return runEnqueueWithConflictCheck(items, mergedOptions);
   }
 
@@ -740,7 +752,24 @@ function dlSyncOptionsControls() {
   dlUpdateOptionsPathPreview();
 }
 
+function dlSetOptionsDirError(message) {
+  const previewEl = dlEl('dl-opt-path-preview');
+  const group = previewEl?.closest?.('.path-preview-row')?.parentElement;
+  if (!group) return;
+  let errEl = group.querySelector('.form-error');
+  if (!message) {
+    if (errEl) errEl.textContent = '';
+    return;
+  }
+  if (!errEl) {
+    errEl = dlCreateEl('small', 'form-error');
+    group.appendChild(errEl);
+  }
+  errEl.textContent = message;
+}
+
 function dlCloseOptionsModal(result = null) {
+  dlSetOptionsDirError('');
   const modal = dlEl('download-options-modal');
   if (modal) modal.style.display = 'none';
   const resolve = dlUiState.pendingOptionsResolve;
@@ -769,6 +798,9 @@ async function dlOpenOptionsModal({ items, defaultOptions }) {
     duplicateAction: defaultOptions.duplicateAction || 'ask',
   };
 
+  dlSetOptionsDirError(
+    dlIsValidBaseDir(dlUiState.optionsState.baseDirOverride) ? '' : 'Download-Ordner muss ein absoluter Pfad sein'
+  );
   dlSyncOptionsControls();
   const modal = dlEl('download-options-modal');
   if (modal) modal.style.display = 'flex';
@@ -861,7 +893,13 @@ function dlWireOptionsModalEvents() {
         dlGetEffectiveBaseDir(dlUiState.optionsState.baseDirOverride)
       );
       if (typeof selected === 'string' && selected.trim()) {
-        dlUiState.optionsState.baseDirOverride = selected.trim();
+        const trimmed = selected.trim();
+        if (!dlIsValidBaseDir(trimmed)) {
+          dlSetOptionsDirError('Download-Ordner muss ein absoluter Pfad sein');
+          return;
+        }
+        dlSetOptionsDirError('');
+        dlUiState.optionsState.baseDirOverride = trimmed;
         dlUpdateOptionsPathPreview();
       }
     } catch (err) {
@@ -872,6 +910,12 @@ function dlWireOptionsModalEvents() {
   dlEl('btn-dl-opt-start')?.addEventListener('click', () => {
     const st = dlUiState.optionsState;
     if (!st) return;
+    const effectiveDir = dlGetEffectiveBaseDir(st.baseDirOverride);
+    if (!dlIsValidBaseDir(st.baseDirOverride) || !dlIsValidBaseDir(effectiveDir)) {
+      dlSetOptionsDirError('Download-Ordner muss ein absoluter Pfad sein');
+      return;
+    }
+    dlSetOptionsDirError('');
     dlCloseOptionsModal({
       options: {
         baseDir: st.baseDirOverride,
@@ -937,19 +981,22 @@ function dlWireBarAndEscapeEvents() {
     if (e.key !== 'Escape') return;
     if (dlEl('download-conflict-modal')?.style.display === 'flex') {
       e.stopPropagation();
+      e.stopImmediatePropagation?.();
       dlCloseConflictModal('cancel');
       return;
     }
     if (dlEl('download-options-modal')?.style.display === 'flex') {
       e.stopPropagation();
+      e.stopImmediatePropagation?.();
       dlCloseOptionsModal(null);
       return;
     }
     if (dlEl('downloads-modal')?.style.display === 'flex') {
       e.stopPropagation();
+      e.stopImmediatePropagation?.();
       dlCloseManagerModal();
     }
-  });
+  }, true);
 }
 
 function dlObservePlaylistVisibility(controller) {
@@ -996,6 +1043,11 @@ function dlCreateBrowserRuntime() {
       controller.triggerDownload([data.item], {
         source: isOptions ? 'context-options' : 'context-default',
         forceDialog: isOptions,
+      }).catch((err) => {
+        console.warn('[Downloads] context-menu triggerDownload failed:', err && err.message);
+        if (typeof alert === 'function') {
+          alert((err && err.message) || 'Download konnte nicht gestartet werden.');
+        }
       });
     });
 
@@ -1012,7 +1064,14 @@ function dlCreateBrowserRuntime() {
 
   return {
     init,
-    triggerDownload: (items, opts) => controller.triggerDownload(items, opts),
+    triggerDownload: (items, opts) =>
+      controller.triggerDownload(items, opts).catch((err) => {
+        console.warn('[Downloads] triggerDownload failed:', err && err.message);
+        if (typeof alert === 'function') {
+          alert((err && err.message) || 'Download konnte nicht gestartet werden.');
+        }
+        return { cancelled: true, added: 0, jobs: [] };
+      }),
     openManagerModal: dlOpenManagerModal,
     getJobForItemKey: (itemKey) => controller.getJobForItemKey(itemKey),
     refreshVisibility: () => dlRenderTopBarButton(controller.getSnapshot()),

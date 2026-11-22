@@ -319,3 +319,34 @@ test('buildPathPreview mirrors structured and flat paths without exposing URLs',
   });
   assert.strictEqual(epPreview, '/downloads/Series/Breaking Bad/Season 01/Breaking Bad - S01E01.mkv (+1 weitere)');
 });
+
+test('triggerDownload & runEnqueueWithConflictCheck reject relative downloadDir cleanly without IPC calls', async () => {
+  const AppSettings = createStubSettings({
+    downloadClickAction: 'dialog',
+    downloadDir: '',
+  });
+  const electronAPI = createStubElectronAPI({ conflicts: [] });
+  const controller = createDownloadController({
+    AppSettings,
+    electronAPI,
+    openOptionsModal: async (p) => ({
+      options: { ...p.defaultOptions, baseDir: 'relative/movies', preset: 'h264' },
+      rememberDefaults: true,
+    }),
+  });
+
+  await assert.rejects(
+    () => controller.triggerDownload([sampleMovie], { source: 'button' }),
+    /absoluter Pfad/
+  );
+  assert.strictEqual(AppSettings.setCalls.length, 0);
+  assert.strictEqual(electronAPI.calls.checkDownloadConflicts.length, 0);
+  assert.strictEqual(electronAPI.calls.enqueueDownloads.length, 0);
+
+  await assert.rejects(
+    () => controller.runEnqueueWithConflictCheck([sampleMovie], { baseDir: '../../etc' }),
+    /absoluter Pfad/
+  );
+  assert.strictEqual(electronAPI.calls.checkDownloadConflicts.length, 0);
+  assert.strictEqual(electronAPI.calls.enqueueDownloads.length, 0);
+});
