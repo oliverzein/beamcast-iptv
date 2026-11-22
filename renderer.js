@@ -273,6 +273,76 @@ function updateCategories() {
   });
 }
 
+function resolveChannelStreamUrl(ch) {
+  if (activePlaylistType === 'm3u') return ch.url || null;
+  if (!activeAccount) return null;
+  const baseUrl = getAccountBaseUrl(activeAccount);
+  if (activeTab === 'live') {
+    return `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
+  }
+  if (activeTab === 'vod') {
+    const ext = ch.containerExtension || 'mp4';
+    return `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
+  }
+  return null;
+}
+
+function buildMovieDownloadMeta(ch, streamUrl) {
+  if (activePlaylistType !== 'xtream' || activeTab !== 'vod' || !streamUrl) return null;
+  return {
+    itemKey: 'movie:' + ch.streamId,
+    mediaType: 'movie',
+    title: ch.name,
+    url: streamUrl,
+    sourceExt: ch.containerExtension || 'mp4',
+    downloadable: true,
+  };
+}
+
+function appendSidebarActionButtons(li, ch) {
+  if (activePlaylistType === 'm3u' || activeTab !== 'series') {
+    const mpvBtn = document.createElement('button');
+    mpvBtn.type = 'button';
+    mpvBtn.className = 'mpv-direct-btn';
+    mpvBtn.textContent = '🎬';
+    mpvBtn.title = 'Direkt in MPV abspielen';
+    mpvBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const streamUrl = resolveChannelStreamUrl(ch);
+      if (streamUrl) {
+        window.electronAPI.openInMpv(streamUrl, ch.name);
+      }
+    });
+    li.appendChild(mpvBtn);
+  }
+
+  if (activePlaylistType === 'xtream' && activeTab === 'vod') {
+    const dlBtn = document.createElement('button');
+    dlBtn.type = 'button';
+    dlBtn.className = 'download-direct-btn';
+    dlBtn.textContent = '⬇';
+    dlBtn.title = 'Herunterladen';
+    dlBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const movieMeta = buildMovieDownloadMeta(ch, resolveChannelStreamUrl(ch));
+      if (movieMeta) {
+        window.DownloadUI?.triggerDownload([movieMeta], { source: 'button' });
+      }
+    });
+    li.appendChild(dlBtn);
+  }
+}
+
+function handleChannelContextMenu(ch) {
+  if (activePlaylistType === 'xtream' && (activeTab === 'live' || activeTab === 'vod')) {
+    localStorage.setItem(`lastSelectedId_${activeTab}`, ch.streamId);
+  }
+  const streamUrl = resolveChannelStreamUrl(ch);
+  if (!streamUrl) return;
+  const movieMeta = buildMovieDownloadMeta(ch, streamUrl);
+  window.electronAPI.showContextMenu(ch.name, streamUrl, movieMeta);
+}
+
 // Render channel list to sidebar
 function renderChannelList(list) {
   channelList.innerHTML = '';
@@ -322,30 +392,7 @@ function renderChannelList(list) {
       li.appendChild(catchupIndicator);
     }
 
-    if (activePlaylistType === 'm3u' || activeTab !== 'series') {
-      const mpvBtn = document.createElement('button');
-      mpvBtn.className = 'mpv-direct-btn';
-      mpvBtn.innerHTML = '🎬';
-      mpvBtn.title = 'Direkt in MPV abspielen';
-      mpvBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        let streamUrl = null;
-        if (activePlaylistType === 'm3u') {
-          streamUrl = ch.url;
-        } else if (activeTab === 'live') {
-          const baseUrl = getAccountBaseUrl(activeAccount);
-          streamUrl = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
-        } else if (activeTab === 'vod') {
-          const baseUrl = getAccountBaseUrl(activeAccount);
-          const ext = ch.containerExtension || 'mp4';
-          streamUrl = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
-        }
-        if (streamUrl) {
-          window.electronAPI.openInMpv(streamUrl, ch.name);
-        }
-      });
-      li.appendChild(mpvBtn);
-    }
+    appendSidebarActionButtons(li, ch);
 
     li.addEventListener('click', () => {
       const activeLi = channelList.querySelector('li.active');
@@ -361,24 +408,7 @@ function renderChannelList(list) {
 
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      
-      let streamUrl = null;
-      if (activePlaylistType === 'm3u') {
-        streamUrl = ch.url;
-      } else if (activeTab === 'live') {
-        localStorage.setItem('lastSelectedId_live', ch.streamId);
-        const baseUrl = getAccountBaseUrl(activeAccount);
-        streamUrl = `${baseUrl}/live/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.ts`;
-      } else if (activeTab === 'vod') {
-        localStorage.setItem('lastSelectedId_vod', ch.streamId);
-        const baseUrl = getAccountBaseUrl(activeAccount);
-        const ext = ch.containerExtension || 'mp4';
-        streamUrl = `${baseUrl}/movie/${activeAccount.username}/${activeAccount.password}/${ch.streamId}.${ext}`;
-      }
-
-      if (streamUrl) {
-        window.electronAPI.showContextMenu(ch.name, streamUrl);
-      }
+      handleChannelContextMenu(ch);
     });
 
     let isLastSelected = false;

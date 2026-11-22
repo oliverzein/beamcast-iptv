@@ -132,15 +132,28 @@
             <div class="series-details">
               <h2 id="series-title">Series Title</h2>
               <p id="series-plot">Plot description here...</p>
-              <div class="select-wrapper season-select-wrapper">
-                <select id="season-select">
-                  <option value="">Select Season</option>
-                </select>
+              <div class="series-toolbar">
+                <div class="select-wrapper season-select-wrapper">
+                  <select id="season-select">
+                    <option value="">Select Season</option>
+                  </select>
+                </div>
+                <button type="button" id="btn-download-season" class="btn btn-primary" disabled>⬇ Ganze Staffel laden (0)</button>
+                <button type="button" id="btn-toggle-ep-multiselect" class="btn btn-cyan-outline" disabled>☑ Auswählen</button>
               </div>
             </div>
           </div>
           <div class="episodes-grid-container">
             <h3>Episodes</h3>
+            <div id="episodes-multiselect-bar" class="multiselect-bar" style="display: none;">
+              <span id="ep-multiselect-count" class="multiselect-count">0 Episoden ausgewählt</span>
+              <div class="multiselect-actions">
+                <button type="button" id="btn-ep-ms-all" class="btn-sm btn-sm-secondary">Alle auswählen</button>
+                <button type="button" id="btn-ep-ms-none" class="btn-sm btn-sm-secondary">Auswahl aufheben</button>
+                <button type="button" id="btn-ep-ms-download" class="btn-sm btn-sm-cyan" disabled>⬇ 0 Episoden herunterladen</button>
+                <button type="button" id="btn-ep-ms-done" class="btn-sm btn-sm-secondary">Fertig</button>
+              </div>
+            </div>
             <div class="episodes-grid" id="episodes-grid">
               <!-- Dynamically populated episodes cards -->
             </div>

@@ -670,6 +670,276 @@ function handleXtreamClick(item) {
   }
 }
 
+let isEpisodeMultiSelectMode = false;
+const selectedEpisodeKeys = new Set();
+const currentSeasonEpisodeMetas = new Map();
+
+function buildEpisodeItemMeta(ep, seasonNum) {
+  if (!activeAccount || !activeSeriesData || !ep) return null;
+  const paddedSeason = String(seasonNum).padStart(2, '0');
+  const paddedEp = String(ep.episode_num).padStart(2, '0');
+  const ext = ep.container_extension || 'mp4';
+  const baseUrl = getAccountBaseUrl(activeAccount);
+  const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
+  const seriesName = seriesTitle.textContent;
+  return {
+    itemKey: 'episode:' + ep.id,
+    mediaType: 'episode',
+    title: `${seriesName} - S${paddedSeason}E${paddedEp}`,
+    seriesId: activeSeriesData.seriesId,
+    seriesName,
+    seasonNum,
+    episodeNum: ep.episode_num,
+    episodeTitle: ep.title,
+    url,
+    sourceExt: ext,
+    downloadable: true,
+  };
+}
+
+function updateSeasonToolbarState(episodeCount) {
+  const count = Number(episodeCount) || 0;
+  const seasonBtn = document.getElementById('btn-download-season');
+  if (seasonBtn) {
+    seasonBtn.textContent = `⬇ Ganze Staffel laden (${count})`;
+    seasonBtn.disabled = count === 0;
+  }
+  const toggleBtn = document.getElementById('btn-toggle-ep-multiselect');
+  if (toggleBtn) {
+    toggleBtn.disabled = count === 0;
+  }
+}
+
+function updateMultiSelectBar() {
+  const count = selectedEpisodeKeys.size;
+  const label = count === 1 ? '1 Episode' : `${count} Episoden`;
+  const countEl = document.getElementById('ep-multiselect-count');
+  if (countEl) {
+    countEl.textContent = `${label} ausgewählt`;
+  }
+  const dlBtn = document.getElementById('btn-ep-ms-download');
+  if (dlBtn) {
+    dlBtn.textContent = `⬇ ${label} herunterladen`;
+    dlBtn.disabled = count === 0;
+  }
+}
+
+function syncEpisodeCardSelectionUI() {
+  if (!episodesGrid) return;
+  episodesGrid.querySelectorAll('.episode-card').forEach((card) => {
+    const isSelected = isEpisodeMultiSelectMode && selectedEpisodeKeys.has(card.dataset.itemKey);
+    card.classList.toggle('selected', isSelected);
+    const checkbox = card.querySelector('.ep-checkbox');
+    if (checkbox) {
+      checkbox.textContent = isSelected ? '✓' : '';
+    }
+  });
+}
+
+function setEpisodeMultiSelectMode(enabled) {
+  if (enabled && currentSeasonEpisodeMetas.size === 0) return;
+  isEpisodeMultiSelectMode = Boolean(enabled);
+  if (!isEpisodeMultiSelectMode) {
+    selectedEpisodeKeys.clear();
+  }
+  if (episodesGrid) {
+    episodesGrid.classList.toggle('multiselect-mode', isEpisodeMultiSelectMode);
+  }
+  const toggleBtn = document.getElementById('btn-toggle-ep-multiselect');
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('active', isEpisodeMultiSelectMode);
+  }
+  const bar = document.getElementById('episodes-multiselect-bar');
+  if (bar) {
+    bar.style.display = isEpisodeMultiSelectMode ? 'flex' : 'none';
+  }
+  syncEpisodeCardSelectionUI();
+  updateMultiSelectBar();
+}
+
+function toggleEpisodeCardSelection(card, itemKey) {
+  if (!itemKey) return;
+  const nextSelected = !selectedEpisodeKeys.has(itemKey);
+  if (nextSelected) selectedEpisodeKeys.add(itemKey);
+  else selectedEpisodeKeys.delete(itemKey);
+  card.classList.toggle('selected', nextSelected);
+  const checkbox = card.querySelector('.ep-checkbox');
+  if (checkbox) checkbox.textContent = nextSelected ? '✓' : '';
+  updateMultiSelectBar();
+}
+
+function resolveEpisodeBadgeView(job) {
+  if (!job) return null;
+  if (job.status === 'transcoding') {
+    return { cls: 'ep-dl-badge transcode', text: `⚙ ${Math.round(job.progress || 0)}%` };
+  }
+  if (job.status === 'downloading') {
+    const text = job.totalBytes > 0 ? `⬇ ${Math.round(job.progress || 0)}%` : '⬇ Lädt';
+    return { cls: 'ep-dl-badge download', text };
+  }
+  if (job.status === 'queued' || job.status === 'queued_transcode') {
+    return { cls: 'ep-dl-badge queued', text: '⏳' };
+  }
+  if (job.status === 'completed') {
+    return { cls: 'ep-dl-badge done', text: '✓ Geladen' };
+  }
+  if (job.status === 'error') {
+    return { cls: 'ep-dl-badge error', text: '⚠ Fehler' };
+  }
+  return null;
+}
+
+window.refreshEpisodeDownloadBadges = function refreshEpisodeDownloadBadges() {
+  if (!episodesGrid) return;
+  const getJob = window.DownloadUI?.getJobForItemKey;
+  episodesGrid.querySelectorAll('.episode-card').forEach((card) => {
+    const badge = card.querySelector('.ep-dl-badge');
+    if (!badge) return;
+    const job = typeof getJob === 'function' ? getJob(card.dataset.itemKey) : null;
+    const view = resolveEpisodeBadgeView(job);
+    if (!view) {
+      badge.className = 'ep-dl-badge';
+      badge.textContent = '';
+      badge.style.display = 'none';
+      return;
+    }
+    badge.className = view.cls;
+    badge.textContent = view.text;
+    badge.style.display = 'inline-flex';
+  });
+};
+
+function markActiveEpisodeCard(card, epId) {
+  if (activeSeriesData && activeSeriesData.seriesId) {
+    localStorage.setItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`, epId);
+  }
+  card.parentElement?.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+}
+
+function createEpisodeCard(ep, seasonNum) {
+  const epMeta = buildEpisodeItemMeta(ep, seasonNum);
+  const card = document.createElement('div');
+  card.className = 'episode-card';
+  if (epMeta) {
+    card.dataset.itemKey = epMeta.itemKey;
+    currentSeasonEpisodeMetas.set(epMeta.itemKey, epMeta);
+  }
+
+  const top = document.createElement('div');
+  top.className = 'ep-card-top';
+
+  const num = document.createElement('span');
+  num.className = 'ep-num';
+  num.textContent = `Episode ${ep.episode_num}`;
+
+  const dlBtn = document.createElement('button');
+  dlBtn.type = 'button';
+  dlBtn.className = 'ep-dl-btn';
+  dlBtn.textContent = '⬇';
+  dlBtn.title = 'Episode herunterladen';
+  dlBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (epMeta) {
+      window.DownloadUI?.triggerDownload([epMeta], { source: 'button' });
+    }
+  });
+
+  const checkbox = document.createElement('span');
+  checkbox.className = 'ep-checkbox';
+  checkbox.setAttribute('aria-hidden', 'true');
+
+  top.appendChild(num);
+  top.appendChild(dlBtn);
+  top.appendChild(checkbox);
+
+  const title = document.createElement('span');
+  title.className = 'ep-title';
+  title.textContent = ep.title || `Episode ${ep.episode_num}`;
+
+  const badge = document.createElement('span');
+  badge.className = 'ep-dl-badge';
+  badge.style.display = 'none';
+
+  card.appendChild(top);
+  card.appendChild(title);
+  card.appendChild(badge);
+
+  card.addEventListener('click', () => {
+    if (isEpisodeMultiSelectMode) {
+      toggleEpisodeCardSelection(card, card.dataset.itemKey);
+      return;
+    }
+    if (!epMeta) return;
+    markActiveEpisodeCard(card, ep.id);
+    playChannel(`${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`, ep.title, seriesCover.src, epMeta.url);
+  });
+
+  card.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!epMeta) return;
+    markActiveEpisodeCard(card, ep.id);
+    const name = `${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`;
+    window.electronAPI.showContextMenu(name, epMeta.url, epMeta);
+  });
+
+  // Highlight saved episode card
+  if (activeSeriesData && activeSeriesData.seriesId) {
+    const savedEpId = localStorage.getItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`);
+    if (savedEpId && String(ep.id) === String(savedEpId)) {
+      card.classList.add('active');
+      setTimeout(() => {
+        card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }, 100);
+    }
+  }
+
+  return card;
+}
+
+(function setupSeriesDownloadControls() {
+  document.getElementById('btn-download-season')?.addEventListener('click', () => {
+    const items = Array.from(currentSeasonEpisodeMetas.values());
+    if (items.length === 0) return;
+    window.DownloadUI?.triggerDownload(items, { source: 'season' });
+  });
+
+  document.getElementById('btn-toggle-ep-multiselect')?.addEventListener('click', () => {
+    setEpisodeMultiSelectMode(!isEpisodeMultiSelectMode);
+  });
+
+  document.getElementById('btn-ep-ms-all')?.addEventListener('click', () => {
+    if (!isEpisodeMultiSelectMode) return;
+    for (const key of currentSeasonEpisodeMetas.keys()) {
+      selectedEpisodeKeys.add(key);
+    }
+    syncEpisodeCardSelectionUI();
+    updateMultiSelectBar();
+  });
+
+  document.getElementById('btn-ep-ms-none')?.addEventListener('click', () => {
+    selectedEpisodeKeys.clear();
+    syncEpisodeCardSelectionUI();
+    updateMultiSelectBar();
+  });
+
+  document.getElementById('btn-ep-ms-download')?.addEventListener('click', async () => {
+    const items = [];
+    for (const [key, epMeta] of currentSeasonEpisodeMetas.entries()) {
+      if (selectedEpisodeKeys.has(key)) items.push(epMeta);
+    }
+    if (items.length === 0) return;
+    const res = await window.DownloadUI?.triggerDownload(items, { source: 'multiselect' });
+    if (res && !res.cancelled) {
+      setEpisodeMultiSelectMode(false);
+    }
+  });
+
+  document.getElementById('btn-ep-ms-done')?.addEventListener('click', () => {
+    setEpisodeMultiSelectMode(false);
+  });
+})();
+
 // Loads Season/Episodes selector grid
 async function loadSeriesEpisodes(seriesItem) {
   if (activePlaylistType === 'xtream') {
@@ -679,6 +949,10 @@ async function loadSeriesEpisodes(seriesItem) {
   videoContainer.style.display = 'none';
   timelineContainer.style.display = 'none';
   episodesContainer.style.display = 'flex';
+
+  setEpisodeMultiSelectMode(false);
+  currentSeasonEpisodeMetas.clear();
+  updateSeasonToolbarState(0);
 
   activeChannelName.textContent = seriesItem.name;
   activeChannelGroup.textContent = 'TV Series';
@@ -708,7 +982,7 @@ async function loadSeriesEpisodes(seriesItem) {
     }
 
     // Populate Season dropdown
-    const episodes = seriesInfo.episodes;
+    const episodes = seriesInfo.episodes || {};
     const seasons = Object.keys(episodes).sort((a,b) => Number(a) - Number(b));
     
     seasonSelect.innerHTML = '';
@@ -721,6 +995,7 @@ async function loadSeriesEpisodes(seriesItem) {
 
     // Handle Season Select change
     seasonSelect.onchange = () => {
+      setEpisodeMultiSelectMode(false);
       const seasonVal = seasonSelect.value;
       localStorage.setItem(`lastSeason_${seriesItem.seriesId}`, seasonVal);
       renderEpisodesGrid(seasonVal);
@@ -736,85 +1011,40 @@ async function loadSeriesEpisodes(seriesItem) {
       renderEpisodesGrid(seasons[0]);
     } else {
       episodesGrid.innerHTML = '<div class="empty-list-placeholder">No episodes found.</div>';
+      updateSeasonToolbarState(0);
     }
 
   } catch (err) {
     console.error('Failed to load series info:', err);
     seriesPlot.textContent = "Failed to load details.";
     episodesGrid.innerHTML = '<div class="empty-list-placeholder">Error loading episodes.</div>';
+    updateSeasonToolbarState(0);
   }
 }
 
 function renderEpisodesGrid(seasonNum) {
+  setEpisodeMultiSelectMode(false);
+  currentSeasonEpisodeMetas.clear();
   episodesGrid.innerHTML = '';
-  if (!activeSeriesData || !activeSeriesData.episodes || !seasonNum) return;
+  if (!activeSeriesData || !activeSeriesData.episodes || !seasonNum) {
+    updateSeasonToolbarState(0);
+    return;
+  }
 
   const list = activeSeriesData.episodes[seasonNum] || [];
   
   if (list.length === 0) {
     episodesGrid.innerHTML = '<div class="empty-list-placeholder">No episodes in this season.</div>';
+    updateSeasonToolbarState(0);
     return;
   }
 
-  // Sort episodes by episode number
-  list.sort((a,b) => Number(a.episode_num) - Number(b.episode_num)).forEach(ep => {
-    const card = document.createElement('div');
-    card.className = 'episode-card';
-    
-    const num = document.createElement('span');
-    num.className = 'ep-num';
-    num.textContent = `Episode ${ep.episode_num}`;
-
-    const title = document.createElement('span');
-    title.className = 'ep-title';
-    title.textContent = ep.title || `Episode ${ep.episode_num}`;
-
-    card.appendChild(num);
-    card.appendChild(title);
-
-    card.addEventListener('click', () => {
-      const ext = ep.container_extension || 'mp4';
-      const baseUrl = getAccountBaseUrl(activeAccount);
-      const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
-      
-      if (activeSeriesData && activeSeriesData.seriesId) {
-        localStorage.setItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`, ep.id);
-      }
-      card.parentElement.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-
-      playChannel(`${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`, ep.title, seriesCover.src, url);
-    });
-
-    card.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      const ext = ep.container_extension || 'mp4';
-      const baseUrl = getAccountBaseUrl(activeAccount);
-      const url = `${baseUrl}/series/${activeAccount.username}/${activeAccount.password}/${ep.id}.${ext}`;
-      const name = `${seriesTitle.textContent} - S${seasonNum}E${ep.episode_num}`;
-      
-      if (activeSeriesData && activeSeriesData.seriesId) {
-        localStorage.setItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`, ep.id);
-      }
-      card.parentElement.querySelectorAll('.episode-card').forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-
-      window.electronAPI.showContextMenu(name, url);
-    });
-
-    // Highlight saved episode card
-    if (activeSeriesData && activeSeriesData.seriesId) {
-      const savedEpId = localStorage.getItem(`lastSelectedEpisodeId_${activeSeriesData.seriesId}`);
-      if (savedEpId && String(ep.id) === String(savedEpId)) {
-        card.classList.add('active');
-        setTimeout(() => {
-          card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }, 100);
-      }
-    }
-
-    episodesGrid.appendChild(card);
+  const sorted = [...list].sort((a, b) => Number(a.episode_num) - Number(b.episode_num));
+  sorted.forEach(ep => {
+    episodesGrid.appendChild(createEpisodeCard(ep, seasonNum));
   });
+  updateSeasonToolbarState(sorted.length);
+  window.refreshEpisodeDownloadBadges();
 }
 
 // Restore previously playing stream if saved in localStorage

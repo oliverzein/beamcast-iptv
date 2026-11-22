@@ -1244,9 +1244,29 @@ input[type="range"]::-webkit-slider-thumb:hover {
   padding-right: 8px;
 }
 
+.series-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
 .season-select-wrapper {
   width: 180px;
   margin-top: 10px;
+}
+
+.series-toolbar .season-select-wrapper {
+  margin-top: 0;
+}
+
+.series-toolbar .btn {
+  padding: 10px 14px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .episodes-grid-container {
@@ -1263,6 +1283,34 @@ input[type="range"]::-webkit-slider-thumb:hover {
   color: var(--text-muted);
   margin-bottom: 14px;
   font-weight: 600;
+}
+
+.multiselect-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: rgba(0, 242, 254, 0.08);
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  box-shadow: 0 4px 18px rgba(0, 242, 254, 0.1);
+}
+
+.multiselect-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+}
+
+.multiselect-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .episodes-grid {
@@ -1299,12 +1347,83 @@ input[type="range"]::-webkit-slider-thumb:hover {
   box-shadow: 0 0 10px rgba(0, 242, 254, 0.25) !important;
 }
 
+.episodes-grid.multiselect-mode .episode-card.active:not(.selected) {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: none !important;
+}
+
+.episode-card.selected {
+  background: rgba(0, 242, 254, 0.14) !important;
+  border-color: var(--accent-cyan) !important;
+  box-shadow: 0 0 14px rgba(0, 242, 254, 0.25) !important;
+}
+
+.ep-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
 .ep-num {
   font-size: 11px;
   font-weight: 700;
   color: var(--accent-cyan);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.ep-dl-btn,
+.ep-checkbox {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.18s ease;
+}
+
+.ep-dl-btn {
+  display: inline-flex;
+  background: rgba(0, 242, 254, 0.08);
+  border: 1px solid rgba(0, 242, 254, 0.32);
+  color: var(--accent-cyan);
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+.ep-dl-btn:hover {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: #000;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.45);
+}
+
+.ep-checkbox {
+  display: none;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #050811;
+}
+
+.episodes-grid.multiselect-mode .ep-dl-btn {
+  display: none;
+}
+
+.episodes-grid.multiselect-mode .ep-checkbox {
+  display: inline-flex;
+}
+
+.episode-card.selected .ep-checkbox {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 8px rgba(0, 242, 254, 0.45);
 }
 
 .ep-title {
@@ -1317,6 +1436,48 @@ input[type="range"]::-webkit-slider-thumb:hover {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.ep-dl-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
+
+.ep-dl-badge.transcode {
+  background: rgba(189, 0, 255, 0.15);
+  border: 1px solid rgba(189, 0, 255, 0.45);
+  color: #e4aaff;
+}
+
+.ep-dl-badge.download {
+  background: rgba(0, 242, 254, 0.13);
+  border: 1px solid rgba(0, 242, 254, 0.45);
+  color: var(--accent-cyan);
+}
+
+.ep-dl-badge.queued {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-muted);
+}
+
+.ep-dl-badge.done {
+  background: rgba(57, 211, 83, 0.13);
+  border: 1px solid rgba(57, 211, 83, 0.4);
+  color: #39d353;
+}
+
+.ep-dl-badge.error {
+  background: rgba(255, 69, 58, 0.14);
+  border: 1px solid rgba(255, 69, 58, 0.42);
+  color: #ff6b63;
 }
 
 #m3u-modal .modal-body {
@@ -1589,30 +1750,42 @@ input[type="range"]::-webkit-slider-thumb:hover {
   box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
 }
 
-/* Direct Play Buttons */
+/* Direct Play & Download Buttons */
 .channel-list li .mpv-direct-btn,
-.epg-item .mpv-direct-btn {
+.epg-item .mpv-direct-btn,
+.channel-list li .download-direct-btn {
   display: none;
   background: rgba(0, 242, 254, 0.05);
   border: 1px solid rgba(0, 242, 254, 0.3);
   color: var(--accent-cyan);
   cursor: pointer;
   font-size: 11px;
-  margin-left: auto;
   padding: 2px 6px;
   border-radius: 4px;
+  flex-shrink: 0;
   transition: all 0.2s ease;
 }
 
+.channel-list li .mpv-direct-btn,
+.epg-item .mpv-direct-btn {
+  margin-left: auto;
+}
+
+.channel-list li .mpv-direct-btn + .download-direct-btn {
+  margin-left: -4px;
+}
+
 .channel-list li .mpv-direct-btn:hover,
-.epg-item .mpv-direct-btn:hover {
+.epg-item .mpv-direct-btn:hover,
+.channel-list li .download-direct-btn:hover {
   background: var(--accent-cyan);
   color: #000;
   box-shadow: 0 0 8px rgba(0, 242, 254, 0.5);
 }
 
 .channel-list li:hover .mpv-direct-btn,
-.epg-item:hover .mpv-direct-btn {
+.epg-item:hover .mpv-direct-btn,
+.channel-list li:hover .download-direct-btn {
   display: inline-block;
 }
 
@@ -1863,6 +2036,7 @@ select.invalid {
 
 /* ===== Downloads UI: Top-Bar Button, Status Bar & Modals ===== */
 .btn-sm-cyan {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: rgba(0, 242, 254, 0.12);
@@ -1891,11 +2065,14 @@ select.invalid {
 }
 
 .btn:disabled,
-.btn-sm:disabled {
+.btn-sm:disabled,
+.btn:disabled:hover,
+.btn-sm:disabled:hover {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+  filter: none;
 }
 
 .badge-count {
