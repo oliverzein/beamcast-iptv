@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 
 // Set application name and userData path to ensure consistency across all environments
@@ -10,6 +10,7 @@ const proxy = require('./lib/proxy');
 const externalPlayer = require('./lib/external-player');
 const streamInfo = require('./lib/stream-info');
 const help = require('./lib/help');
+const downloadManager = require('./lib/download-manager');
 
 // Enable HEVC hardware decoding switches in Electron/Chromium
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
@@ -17,8 +18,12 @@ app.commandLine.appendSwitch('enable-accelerated-video-decode');
 
 let mainWindow;
 let activeStream = null;
+let isClosingConfirmed = false;
+let isClosePromptOpen = false;
 
 function createWindow() {
+  isClosingConfirmed = false;
+  isClosePromptOpen = false;
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -33,6 +38,41 @@ function createWindow() {
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[Renderer Console] [Level ${level}] ${message} (${path.basename(sourceId)}:${line})`);
+  });
+
+  mainWindow.on('close', async (e) => {
+    if (isClosingConfirmed || !downloadManager.hasActiveJobs()) {
+      return;
+    }
+
+    e.preventDefault();
+    if (isClosePromptOpen) {
+      return;
+    }
+
+    isClosePromptOpen = true;
+    try {
+      const { response } = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Downloads laufen noch',
+        message: 'Downloads laufen noch',
+        detail:
+          'Es laufen noch aktive Downloads oder Transcodings. Beim Beenden werden laufende Vorgänge abgebrochen und temporäre Dateien gelöscht.',
+        buttons: ['Abbrechen (weiterlaufen)', 'Beenden & abbrechen'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+
+      if (response === 1) {
+        isClosingConfirmed = true;
+        await downloadManager.shutdown();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.destroy();
+        }
+      }
+    } finally {
+      isClosePromptOpen = false;
+    }
   });
 
   mainWindow.loadFile('index.html');
@@ -151,6 +191,9 @@ app.whenReady().then(() => {
   externalPlayer.init(getMainWindow, () => proxy.killActiveFfmpeg());
   streamInfo.init(getMainWindow, proxy.runFfprobeCommand, getActiveStream);
   help.init(getMainWindow);
+  downloadManager.init(getMainWindow, app);
+
+  ipcMain.handle('download:open-in-mpv', (_e, filePath) => externalPlayer.openLocalFileInMpv(filePath));
 });
 
 app.on('window-all-closed', () => {
@@ -166,6 +209,9 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   proxy.stop();
+  downloadManager.shutdown().catch((err) => {
+    console.error('Error shutting down download manager:', err);
+  });
 });
 
 app.on('activate', () => {

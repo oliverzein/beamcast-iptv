@@ -37,6 +37,8 @@
       "renderer-playback.js",
       "renderer-state.js",
       "renderer-xtream.js",
+      "renderer-settings.js",
+      "renderer-downloads.js",
       "index.html",
       "stream_info.html",
       "help.html",
