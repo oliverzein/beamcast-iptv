@@ -208,3 +208,47 @@ test('AppSettings: SCHEMA is exported and has expected keys', () => {
   assert.ok(SCHEMA.epgHistoricFilterDays, 'epgHistoricFilterDays in SCHEMA');
   assert.strictEqual(typeof SCHEMA.epgPrefetchConcurrency.default, 'number');
 });
+
+test('AppSettings: download schema defaults and enum/string validation', async () => {
+  await resetDb();
+  await IPTVDb.open();
+  delete require.cache[require.resolve('../lib/settings.js')];
+  const { AppSettings, SCHEMA } = require('../lib/settings.js');
+  AppSettings._cache = null;
+  AppSettings._loadPromise = null;
+  await AppSettings.load();
+
+  assert.strictEqual(SCHEMA.downloadDir.default, '');
+  assert.strictEqual(AppSettings.get('downloadDir'), '');
+  assert.strictEqual(AppSettings.get('downloadFolderStructure'), 'structured');
+  assert.strictEqual(AppSettings.get('downloadDefaultPreset'), 'hevc');
+  assert.strictEqual(AppSettings.get('downloadDefaultResolution'), '1080p');
+  assert.strictEqual(AppSettings.get('downloadClickAction'), 'dialog');
+  assert.strictEqual(AppSettings.get('downloadDuplicateAction'), 'ask');
+  assert.strictEqual(AppSettings.get('downloadHwAccel'), 'auto');
+
+  await AppSettings.set('downloadDir', '/tmp/vod');
+  assert.strictEqual(AppSettings.get('downloadDir'), '/tmp/vod');
+  await AppSettings.set('downloadFolderStructure', 'flat');
+  assert.strictEqual(AppSettings.get('downloadFolderStructure'), 'flat');
+  await AppSettings.set('downloadDefaultPreset', 'h264');
+  assert.strictEqual(AppSettings.get('downloadDefaultPreset'), 'h264');
+  await AppSettings.set('downloadDefaultResolution', '720p');
+  assert.strictEqual(AppSettings.get('downloadDefaultResolution'), '720p');
+  await AppSettings.set('downloadClickAction', 'instant');
+  assert.strictEqual(AppSettings.get('downloadClickAction'), 'instant');
+  await AppSettings.set('downloadDuplicateAction', 'overwrite');
+  assert.strictEqual(AppSettings.get('downloadDuplicateAction'), 'overwrite');
+  await AppSettings.set('downloadHwAccel', 'cpu');
+  assert.strictEqual(AppSettings.get('downloadHwAccel'), 'cpu');
+  await AppSettings.set('downloadHwAccel', '/dev/dri/renderD128');
+  assert.strictEqual(AppSettings.get('downloadHwAccel'), '/dev/dri/renderD128');
+
+  await assert.rejects(() => AppSettings.set('downloadDefaultPreset', 'avi'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadDefaultPreset', 123), TypeError);
+  await assert.rejects(() => AppSettings.set('downloadDir', 123), TypeError);
+  await assert.rejects(() => AppSettings.set('downloadHwAccel', '/dev/null'), RangeError);
+  await assert.rejects(() => AppSettings.set('downloadHwAccel', 42), TypeError);
+
+  await resetDb();
+});
