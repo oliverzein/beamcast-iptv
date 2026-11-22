@@ -1919,6 +1919,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 .epg-prog .epg-prog-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .epg-prog .epg-prog-time { font-size: 10px; color: var(--text-muted); }
+.epg-prog:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
+  z-index: 2;
+}
 .epg-prog.current { border-color: var(--accent-cyan); box-shadow: 0 0 8px rgba(0, 242, 254, 0.35); }
 .epg-prog.archive { border-color: rgba(0, 242, 254, 0.4); background: rgba(0, 242, 254, 0.08); }
 .epg-prog.future { opacity: 0.75; }

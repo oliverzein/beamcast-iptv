@@ -466,3 +466,6 @@ const IPTVDb = {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { IPTVDb };
 }
+if (typeof window !== 'undefined') {
+  window.IPTVDb = IPTVDb;
+}

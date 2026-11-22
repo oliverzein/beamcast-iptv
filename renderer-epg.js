@@ -285,6 +285,9 @@ function buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth,
     block.className = 'epg-prog';
     block.style.left = left + 'px';
     block.style.width = width + 'px';
+    block.setAttribute('role', 'button');
+    block.tabIndex = 0;
+    block.setAttribute('aria-label', `${p.title || '—'}, ${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`);
 
     const isLive = p.start <= now && p.stop > now;
     const isPast = p.stop <= now;
@@ -302,11 +305,19 @@ function buildEpgChannelRow(channel, epgMap, windowStart, windowEnd, trackWidth,
     time.className = 'epg-prog-time';
     time.textContent = `${epgFormatClock(p.start)}–${epgFormatClock(p.stop)}`;
     block.appendChild(title);
+    block.appendChild(document.createTextNode(' '));
     block.appendChild(time);
 
-    block.addEventListener('click', (e) => {
+    const activate = (e) => {
       e.stopPropagation();
       handleEpgProgramClick(channel, p, { isLive, hasCatchup, isFuture });
+    };
+    block.addEventListener('click', activate);
+    block.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activate(e);
+      }
     });
     block.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -437,9 +448,16 @@ function playEpgLive(channel) {
 function handleEpgProgramClick(channel, p, flags) {
   currentLiveChannelName = channel.name;
   currentLiveChannelLogo = channel.logo;
-  if (flags.isLive) {
+  // Re-evaluate live/catchup against current time. Grid may have been rendered
+  // hours ago — captured flags go stale as programmes transition future → live → past.
+  const now = Math.floor(Date.now() / 1000);
+  const isLive = p.start <= now && p.stop > now;
+  const isPast = p.stop <= now;
+  const hasCatchup = channel.catchup === 1 && isPast
+    && p.start >= (now - (Number(channel.catchupDays) || 0) * 86400);
+  if (isLive) {
     playEpgLive(channel);
-  } else if (flags.hasCatchup) {
+  } else if (hasCatchup) {
     playTimeshift(epgToListing(p), channel.streamId);
   } else {
     showEpgDetails(channel, p);
