@@ -816,3 +816,144 @@ test('enqueueDownloads rename/skip conflict resolution, Stage-1 disk check, canc
   });
 });
 
+test('retryJob: concurrent double-retry Promise.all runs only once', async () => {
+  await withTempDir(async (tmpDir) => {
+    let transcodeCount = 0;
+    const retryTranscodeDeferred = createDeferred();
+
+    const manager = createDownloadManager({
+      defaultBaseDir: tmpDir,
+      statfs: async () => ({ bavail: 2000000, bsize: 4096 }),
+      unlink: async (filePath) => {
+        await new Promise((r) => setTimeout(r, 15));
+        try {
+          await fs.promises.unlink(filePath);
+        } catch {
+          // ignore ENOENT
+        }
+      },
+      downloadFile: async ({ partPath }) => {
+        await fs.promises.writeFile(partPath, 'raw');
+        return { bytesWritten: 3, totalBytes: 3 };
+      },
+      transcodeFile: async ({ outputPath }) => {
+        transcodeCount += 1;
+        await fs.promises.writeFile(outputPath, 'mp4');
+        if (transcodeCount === 1) throw new Error('Initial transcode failure');
+        return retryTranscodeDeferred.promise;
+      },
+    });
+
+    const { jobs } = await manager.enqueueDownloads(
+      [
+        {
+          itemKey: 'movie:race',
+          mediaType: 'movie',
+          title: 'Race Test',
+          url: 'http://x.test/movie/u/p/race.mkv',
+          sourceExt: 'mkv',
+        },
+      ],
+      { baseDir: tmpDir, preset: 'hevc' }
+    );
+    const jobId = jobs[0].id;
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.strictEqual(manager.getStateSnapshot().jobs[0].status, 'error');
+    assert.strictEqual(transcodeCount, 1);
+
+    const results = await Promise.all([manager.retryJob(jobId), manager.retryJob(jobId)]);
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.deepStrictEqual(results, [true, false]);
+    assert.strictEqual(transcodeCount, 2);
+
+    retryTranscodeDeferred.resolve({ encoderUsed: 'libx265', remuxFallbackToH264: false });
+    await new Promise((r) => setTimeout(r, 40));
+
+    assert.strictEqual(manager.getStateSnapshot().jobs[0].status, 'completed');
+    assert.strictEqual(transcodeCount, 2);
+  });
+});
+
+test('duplicateAction overwrite overwrites disk files but never shares finalPath across inflight or same-batch jobs', async () => {
+  await withTempDir(async (tmpDir) => {
+    const moviesDir = path.join(tmpDir, 'Movies');
+    await fs.promises.mkdir(moviesDir, { recursive: true });
+    const existingDiskPath = path.join(moviesDir, 'Existing.mkv');
+    await fs.promises.writeFile(existingDiskPath, 'old-bytes');
+
+    const stallDeferreds = [];
+    const manager = createDownloadManager({
+      defaultBaseDir: tmpDir,
+      statfs: async () => ({ bavail: 2000000, bsize: 4096 }),
+      downloadFile: ({ partPath, signal }) => {
+        const d = createDeferred();
+        stallDeferreds.push(d);
+        signal.addEventListener('abort', () => d.reject(createAbortError()), { once: true });
+        return fs.promises.writeFile(partPath, 'new-bytes').then(() => d.promise);
+      },
+    });
+
+    // Disk collision with overwrite keeps exact target path
+    const first = await manager.enqueueDownloads(
+      [
+        {
+          itemKey: 'movie:disk-ow',
+          mediaType: 'movie',
+          title: 'Existing',
+          url: 'http://x.test/1.mkv',
+          sourceExt: 'mkv',
+        },
+      ],
+      { baseDir: tmpDir, structure: 'structured', preset: 'original', duplicateAction: 'overwrite' }
+    );
+    assert.strictEqual(first.added, 1);
+    assert.strictEqual(first.jobs[0].finalPath, existingDiskPath);
+
+    // Active inflight collision with overwrite must NOT reuse active finalPath
+    const second = await manager.enqueueDownloads(
+      [
+        {
+          itemKey: 'movie:inflight-ow',
+          mediaType: 'movie',
+          title: 'Existing',
+          url: 'http://x.test/2.mkv',
+          sourceExt: 'mkv',
+        },
+      ],
+      { baseDir: tmpDir, structure: 'structured', preset: 'original', duplicateAction: 'overwrite' }
+    );
+    if (second.added === 1) {
+      assert.notStrictEqual(second.jobs[0].finalPath, existingDiskPath);
+    }
+
+    // Same-batch collision with overwrite must produce distinct finalPaths for active jobs
+    const batch = await manager.enqueueDownloads(
+      [
+        {
+          itemKey: 'movie:b1',
+          mediaType: 'movie',
+          title: 'Batch:One',
+          url: 'http://x.test/3.mkv',
+          sourceExt: 'mkv',
+        },
+        {
+          itemKey: 'movie:b2',
+          mediaType: 'movie',
+          title: 'Batch?One',
+          url: 'http://x.test/4.mkv',
+          sourceExt: 'mkv',
+        },
+      ],
+      { baseDir: tmpDir, structure: 'structured', preset: 'original', duplicateAction: 'overwrite' }
+    );
+    const activePaths = manager.getStateSnapshot().jobs.map((j) => j.finalPath);
+    assert.strictEqual(new Set(activePaths).size, activePaths.length);
+    assert.ok(batch.added >= 1);
+
+    await manager.shutdown();
+  });
+});
+
+
