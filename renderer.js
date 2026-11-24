@@ -38,6 +38,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Load AppSettings (after DB open, before any consumer reads settings)
   try {
     await AppSettings.load();
+    syncMpvSettingsToMain();
+    AppSettings.onChange((key) => {
+      if (key && key.startsWith('mpv')) {
+        syncMpvSettingsToMain();
+      }
+    });
   } catch (e) {
     console.error('AppSettings load error:', e);
   }
@@ -474,5 +480,21 @@ function setupSettingsIpc() {
         console.warn('[Settings] openSettingsModal not yet available');
       }
     });
+  }
+}
+
+function syncMpvSettingsToMain() {
+  if (!window.AppSettings || !window.electronAPI?.updateMpvOptions) return;
+  try {
+    window.electronAPI.updateMpvOptions({
+      mpvDemuxerMaxBytes: AppSettings.get('mpvDemuxerMaxBytes'),
+      mpvDemuxerReadaheadSecs: AppSettings.get('mpvDemuxerReadaheadSecs'),
+      mpvCachePauseInitial: AppSettings.get('mpvCachePauseInitial'),
+      mpvCachePauseWait: AppSettings.get('mpvCachePauseWait'),
+      mpvForceSeekable: AppSettings.get('mpvForceSeekable'),
+      mpvExtraArgs: AppSettings.get('mpvExtraArgs'),
+    });
+  } catch (err) {
+    console.warn('[MPV Settings] syncMpvSettingsToMain failed:', err && err.message);
   }
 }

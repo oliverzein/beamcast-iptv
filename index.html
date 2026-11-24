@@ -415,6 +415,57 @@
             </div>
           </section>
 
+          <section class="settings-section">
+            <h3 class="settings-section-head">Externer Player (MPV)</h3>
+            <div class="settings-grid">
+              <div class="form-group">
+                <label for="set-mpv-demuxer-max-bytes">Max. Buffer-Größe (MB)</label>
+                <input type="number" id="set-mpv-demuxer-max-bytes" min="32" max="8192" step="1">
+                <small class="form-hint">RAM-Puffergröße (--demuxer-max-bytes, Standard: 500)</small>
+              </div>
+
+              <div class="form-group">
+                <label for="set-mpv-demuxer-readahead-secs">Voraus-Puffer (Sekunden)</label>
+                <input type="number" id="set-mpv-demuxer-readahead-secs" min="1" max="300" step="1">
+                <small class="form-hint">Sekunden Readahead (--demuxer-readahead-secs, Standard: 30)</small>
+              </div>
+
+              <div class="form-group">
+                <label for="set-mpv-cache-pause-initial">Vor Start puffern</label>
+                <div class="select-wrapper">
+                  <select id="set-mpv-cache-pause-initial">
+                    <option value="yes">Ja (--cache-pause-initial=yes)</option>
+                    <option value="no">Nein (Sofort starten)</option>
+                  </select>
+                </div>
+                <small class="form-hint">Wartet vor Wiedergabe auf gefüllten Puffer</small>
+              </div>
+
+              <div class="form-group">
+                <label for="set-mpv-cache-pause-wait">Puffer-Wartezeit (Sekunden)</label>
+                <input type="number" id="set-mpv-cache-pause-wait" min="0" max="60" step="1">
+                <small class="form-hint">Mindest-Puffer vor Start/Resume (--cache-pause-wait, Standard: 5)</small>
+              </div>
+
+              <div class="form-group">
+                <label for="set-mpv-force-seekable">Live-Streams seekbar machen</label>
+                <div class="select-wrapper">
+                  <select id="set-mpv-force-seekable">
+                    <option value="yes">Ja (--force-seekable=yes)</option>
+                    <option value="no">Nein (MPV Standard)</option>
+                  </select>
+                </div>
+                <small class="form-hint">Erlaubt Vor-/Rücklauf und volles Caching bei LiveTV</small>
+              </div>
+
+              <div class="form-group full">
+                <label for="set-mpv-extra-args">Zusätzliche MPV-Parameter</label>
+                <input type="text" id="set-mpv-extra-args" placeholder="z. B. --stream-buffer-size=1M">
+                <small class="form-hint">Optionale Befehlszeilenparameter für MPV</small>
+              </div>
+            </div>
+          </section>
+
           <div class="form-actions-row">
             <button type="button" id="btn-reset-settings" class="btn btn-secondary">Reset to defaults</button>
             <button type="button" id="btn-save-settings" class="btn btn-primary">Save</button>

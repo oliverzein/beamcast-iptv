@@ -13,11 +13,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onStopPlayback: (callback) => {
     ipcRenderer.on('stop-playback', () => callback());
   },
-  openInMpv: (streamUrl, streamName) => {
-    ipcRenderer.send('open-in-mpv', { url: streamUrl, name: streamName });
+  openInMpv: (streamUrl, streamName, options = null) => {
+    ipcRenderer.send('open-in-mpv', { url: streamUrl, name: streamName, options });
   },
   stopMpv: () => {
     ipcRenderer.send('stop-mpv');
+  },
+  updateMpvOptions: (options) => {
+    ipcRenderer.send('update-mpv-options', options);
   },
   onMpvStatusChanged: (callback) => {
     ipcRenderer.on('mpv-status-changed', (event, data) => callback(data));

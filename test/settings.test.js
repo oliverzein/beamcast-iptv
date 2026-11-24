@@ -267,3 +267,42 @@ test('AppSettings: download schema defaults and enum/string validation', async (
 
   await resetDb();
 });
+
+test('AppSettings: mpv schema defaults and validation', async () => {
+  await resetDb();
+  await IPTVDb.open();
+  delete require.cache[require.resolve('../lib/settings.js')];
+  const { AppSettings, SCHEMA } = require('../lib/settings.js');
+  AppSettings._cache = null;
+  AppSettings._loadPromise = null;
+  await AppSettings.load();
+
+  assert.strictEqual(SCHEMA.mpvDemuxerMaxBytes.default, 500);
+  assert.strictEqual(AppSettings.get('mpvDemuxerMaxBytes'), 500);
+  assert.strictEqual(AppSettings.get('mpvDemuxerReadaheadSecs'), 30);
+  assert.strictEqual(AppSettings.get('mpvCachePauseInitial'), 'yes');
+  assert.strictEqual(AppSettings.get('mpvCachePauseWait'), 5);
+  assert.strictEqual(AppSettings.get('mpvForceSeekable'), 'yes');
+  assert.strictEqual(AppSettings.get('mpvExtraArgs'), '');
+
+  await AppSettings.set('mpvDemuxerMaxBytes', 1024);
+  assert.strictEqual(AppSettings.get('mpvDemuxerMaxBytes'), 1024);
+  await AppSettings.set('mpvDemuxerReadaheadSecs', 60);
+  assert.strictEqual(AppSettings.get('mpvDemuxerReadaheadSecs'), 60);
+  await AppSettings.set('mpvCachePauseInitial', 'no');
+  assert.strictEqual(AppSettings.get('mpvCachePauseInitial'), 'no');
+  await AppSettings.set('mpvCachePauseWait', 0);
+  assert.strictEqual(AppSettings.get('mpvCachePauseWait'), 0);
+  await AppSettings.set('mpvForceSeekable', 'no');
+  assert.strictEqual(AppSettings.get('mpvForceSeekable'), 'no');
+  await AppSettings.set('mpvExtraArgs', '--stream-buffer-size=2M');
+  assert.strictEqual(AppSettings.get('mpvExtraArgs'), '--stream-buffer-size=2M');
+
+  await assert.rejects(() => AppSettings.set('mpvDemuxerMaxBytes', 10), RangeError);
+  await assert.rejects(() => AppSettings.set('mpvDemuxerMaxBytes', 10000), RangeError);
+  await assert.rejects(() => AppSettings.set('mpvCachePauseInitial', 'invalid'), RangeError);
+  await assert.rejects(() => AppSettings.set('mpvCachePauseWait', -1), RangeError);
+  await assert.rejects(() => AppSettings.set('mpvForceSeekable', 'maybe'), RangeError);
+
+  await resetDb();
+});

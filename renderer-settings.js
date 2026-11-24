@@ -14,6 +14,12 @@ const INPUT_ID_MAP = {
   downloadClickAction: 'set-download-click-action',
   downloadDuplicateAction: 'set-download-duplicate',
   downloadHwAccel: 'set-download-hwaccel',
+  mpvDemuxerMaxBytes: 'set-mpv-demuxer-max-bytes',
+  mpvDemuxerReadaheadSecs: 'set-mpv-demuxer-readahead-secs',
+  mpvCachePauseInitial: 'set-mpv-cache-pause-initial',
+  mpvCachePauseWait: 'set-mpv-cache-pause-wait',
+  mpvForceSeekable: 'set-mpv-force-seekable',
+  mpvExtraArgs: 'set-mpv-extra-args',
 };
 
 // Schema derivation — the single source of truth is window.AppSettingsSchema
