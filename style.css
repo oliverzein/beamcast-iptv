@@ -422,6 +422,16 @@ select option {
   animation: pulse 1.5s infinite;
 }
 
+.pulse-dot.red {
+  background-color: #ff453a;
+  box-shadow: 0 0 8px #ff453a;
+  animation: pulse 1.5s infinite;
+}
+
+.status-indicator[title]:not([title=""]) {
+  cursor: help;
+}
+
 @keyframes pulse {
   0% { transform: scale(0.95); opacity: 0.5; }
   50% { transform: scale(1.1); opacity: 1; }

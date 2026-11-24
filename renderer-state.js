@@ -12,6 +12,7 @@ const activeChannelGroup = document.getElementById('active-channel-group');
 const activeLogoContainer = document.getElementById('active-logo-container');
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
+const statusIndicator = document.querySelector('.status-indicator');
 const playbackBadge = document.getElementById('playback-badge');
 
 const videoPlayer = document.getElementById('video-player');

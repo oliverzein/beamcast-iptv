@@ -487,8 +487,6 @@ function syncMpvSettingsToMain() {
   if (!window.AppSettings || !window.electronAPI?.updateMpvOptions) return;
   try {
     window.electronAPI.updateMpvOptions({
-      mpvDemuxerMaxBytes: AppSettings.get('mpvDemuxerMaxBytes'),
-      mpvDemuxerReadaheadSecs: AppSettings.get('mpvDemuxerReadaheadSecs'),
       mpvCachePauseInitial: AppSettings.get('mpvCachePauseInitial'),
       mpvCachePauseWait: AppSettings.get('mpvCachePauseWait'),
       mpvForceSeekable: AppSettings.get('mpvForceSeekable'),

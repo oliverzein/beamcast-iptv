@@ -11,6 +11,14 @@ function resetToLive() {
   }
 }
 
+function setPlaybackStatus(text, dotColor = 'green', errorDetails = '') {
+  if (statusText) statusText.textContent = text;
+  if (statusDot) statusDot.className = `pulse-dot ${dotColor}`;
+  if (typeof statusIndicator !== 'undefined' && statusIndicator) {
+    statusIndicator.title = errorDetails || '';
+  }
+}
+
 function updateAlwaysMpvButtonState() {
   if (!btnToggleAlwaysMpv) return;
   if (isAlwaysMpvEnabled) {
@@ -74,6 +82,8 @@ function setupMpvIntegrations() {
         mpvStatusBar.style.display = 'flex';
         mpvStatusText.textContent = `MPV läuft: ${data.name}`;
       }
+      playbackErrorOverlay.style.display = 'none';
+      setPlaybackStatus("MPV Playing", "green");
       // Auto-pause internal player
       if (!videoPlayer.paused) {
         videoPlayer.pause();
@@ -84,16 +94,24 @@ function setupMpvIntegrations() {
       if (mpvStatusBar) {
         mpvStatusBar.style.display = 'none';
       }
+      if (data && data.error) {
+        console.error('[MPV Error]', data.error);
+        handlePlayError(`MPV Fehler (${data.name || 'Stream'}):\n${data.error}`);
+      } else if (statusText && statusText.textContent === "MPV Playing") {
+        setPlaybackStatus(activeAccount ? `Active: ${activeAccount.name}` : "Ready", "green");
+      }
     }
   });
 }
 
 // Handle playback
 function playChannel(name, group, logo, streamUrl) {
+  playbackErrorOverlay.style.display = 'none';
   if (isAlwaysMpvEnabled) {
     activeChannelName.textContent = name;
     activeChannelGroup.textContent = group || 'Live Stream';
     activeStreamUrl = streamUrl;
+    setPlaybackStatus("Loading MPV...", "orange");
     window.electronAPI.openInMpv(streamUrl, name);
     return;
   }
@@ -113,8 +131,7 @@ function playChannel(name, group, logo, streamUrl) {
 
   loaderOverlay.classList.add('active');
   loaderText.textContent = "Decoding stream...";
-  statusText.textContent = "Loading stream...";
-  statusDot.className = "pulse-dot orange";
+  setPlaybackStatus("Loading stream...", "orange");
 
   activeStreamUrl = streamUrl;
   seekOffset = 0;
@@ -216,8 +233,7 @@ function loadStream(proxyUrl) {
         streamLoadTimeout = null;
       }
       loaderOverlay.classList.remove('active');
-      statusText.textContent = "Playing";
-      statusDot.className = "pulse-dot green";
+      setPlaybackStatus("Playing", "green");
       ctrlPlay.textContent = "⏸";
     };
 
@@ -228,20 +244,17 @@ function loadStream(proxyUrl) {
       }
       loaderOverlay.classList.remove('active');
       if (videoPlayer.paused) {
-        statusText.textContent = "Paused";
-        statusDot.className = "pulse-dot orange";
+        setPlaybackStatus("Paused", "orange");
         ctrlPlay.textContent = "▶";
       } else {
-        statusText.textContent = "Playing";
-        statusDot.className = "pulse-dot green";
+        setPlaybackStatus("Playing", "green");
         ctrlPlay.textContent = "⏸";
       }
     };
 
     videoPlayer.onwaiting = () => {
       // Don't show full loading overlay for transient buffering
-      statusText.textContent = "Buffering...";
-      statusDot.className = "pulse-dot orange";
+      setPlaybackStatus("Buffering...", "orange");
     };
 
     videoPlayer.onended = () => {
@@ -290,8 +303,7 @@ function loadStream(proxyUrl) {
           ctrlBackToLive.click();
         }
       } else {
-        statusText.textContent = "Ended";
-        statusDot.className = "pulse-dot orange";
+        setPlaybackStatus("Ended", "orange");
         ctrlPlay.textContent = "▶";
       }
     };
@@ -326,9 +338,11 @@ function loadStream(proxyUrl) {
 }
 
 function handlePlayError(message = "Failed to decode stream. The stream might be offline or URL incorrect.") {
+  if (videoContainer) {
+    videoContainer.style.display = 'flex';
+  }
   loaderOverlay.classList.remove('active');
-  statusText.textContent = "Playback Error";
-  statusDot.className = "pulse-dot orange";
+  setPlaybackStatus("Playback Error", "red", message);
   
   playbackErrorText.textContent = message;
   playbackErrorOverlay.style.display = 'flex';
@@ -385,6 +399,9 @@ function stopPlayback() {
   
   statusText.textContent = activeAccount ? `Active: ${activeAccount.name}` : "Ready";
   statusDot.className = "pulse-dot green";
+  if (typeof statusIndicator !== 'undefined' && statusIndicator) {
+    statusIndicator.title = '';
+  }
 }
 
 // Custom Player Controls
@@ -412,6 +429,7 @@ function setupPlaybackContextMenu() {
 function setupBasicPlaybackControls() {
   btnCloseError.addEventListener('click', () => {
     playbackErrorOverlay.style.display = 'none';
+    setPlaybackStatus(activeAccount ? `Active: ${activeAccount.name}` : "Ready", "green");
   });
 
   ctrlPlay.addEventListener('click', () => {
