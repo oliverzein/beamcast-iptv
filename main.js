@@ -129,17 +129,6 @@ function createMenu() {
       ]
     },
     {
-      label: 'Playback',
-      submenu: [
-        {
-          label: 'Stream Info...',
-          click: () => {
-            streamInfo.showStreamInfoWindow();
-          }
-        }
-      ]
-    },
-    {
       label: 'View',
       submenu: [
         { role: 'reload' },

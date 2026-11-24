@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setPlaybackInactive: () => {
     ipcRenderer.send('set-playback-inactive');
   },
+  showPlaybackContextMenu: () => {
+    ipcRenderer.send('show-playback-context-menu');
+  },
   requestStreamInfo: () => {
     ipcRenderer.send('request-stream-info');
   },

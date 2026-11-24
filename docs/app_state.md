@@ -41,8 +41,8 @@ All active files are placed in the project root: `/home/oliverzein/Dokumente/Dat
 - **[package.json](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/package.json)**: Project dependencies (`electron`, `mpegts.js`) and build configurations.
 - **[main.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/main.js)**: Main process entry point. Sets up the main BrowserWindow, application menu, and orchestrates the modular backend services.
 - **[lib/proxy.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/proxy.js)**: HTTP streaming/API proxy server and FFmpeg/FFprobe transcoding core.
-- **[lib/external-player.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/external-player.js)**: External MPV player handling and context menu integration.
-- **[lib/stream-info.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/stream-info.js)**: Independent stream specifications details window.
+- **[lib/external-player.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/external-player.js)**: External MPV player handling, configurable stream buffering arguments, and context menu integration.
+- **[lib/stream-info.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/lib/stream-info.js)**: Independent stream specifications details window and playback context menu integration.
 - **[preload.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/preload.js)**: Context isolation IPC gateway between main and renderer.
 - **[db.js](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/db.js)**: IndexedDB caching layer for Xtream Codes credentials, categories, and stream metadata.
 - **[index.html](file:///home/oliverzein/Dokumente/Daten/Development/Electron/IPTV/index.html)**: Main HTML structure (sidebar list, filter options, custom overlays).

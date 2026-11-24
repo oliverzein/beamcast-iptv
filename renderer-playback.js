@@ -394,6 +394,19 @@ function setupPlayerControls() {
   setupExternalMpvPlayer();
   setupTimelineSeeking();
   setupControlAutohide();
+  setupPlaybackContextMenu();
+}
+
+function setupPlaybackContextMenu() {
+  if (videoContainer) {
+    videoContainer.addEventListener('contextmenu', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
+      e.preventDefault();
+      if (activeStreamUrl) {
+        window.electronAPI.showPlaybackContextMenu();
+      }
+    });
+  }
 }
 
 function setupBasicPlaybackControls() {
