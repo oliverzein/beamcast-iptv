@@ -92,6 +92,9 @@ Install the latest release directly from GitHub without cloning the repository (
 curl -sL "https://cdn.jsdelivr.net/gh/oliverzein/beamcast-iptv@main/scripts/install.sh" | bash
 ```
 
+### Option C: Gear Lever (Recommended for Auto-Updates)
+Open the downloaded AppImage with [Gear Lever](https://mijorus.it/projects/gearlever/). Provides seamless desktop integration, sandbox CLI management, and automated update checks directly against GitHub Releases.
+
 ---
 
 ## Build Configuration Details
