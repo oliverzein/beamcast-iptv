@@ -5,6 +5,21 @@ const path = require('path');
 app.name = 'beamcast-iptv';
 app.setPath('userData', path.join(app.getPath('appData'), 'beamcast-iptv'));
 
+// Prevent multiple instances from racing on Chromium LevelDB locks in userData
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    } else if (app.isReady()) {
+      createWindow();
+    }
+  });
+}
+
 // Import modular services
 const proxy = require('./lib/proxy');
 const externalPlayer = require('./lib/external-player');
@@ -173,24 +188,26 @@ ipcMain.on('set-playback-inactive', () => {
 });
 
 // App Startup & Lifecycle
-app.whenReady().then(() => {
-  createWindow();
-  createMenu();
+if (gotTheLock) {
+  app.whenReady().then(() => {
+    createWindow();
+    createMenu();
 
-  const getMainWindow = () => {
-    return (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
-  };
-  const getActiveStream = () => activeStream;
+    const getMainWindow = () => {
+      return (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : null;
+    };
+    const getActiveStream = () => activeStream;
 
-  // Initialize helper modules
-  proxy.init(getMainWindow, app.getPath('userData'));
-  externalPlayer.init(getMainWindow, () => proxy.killActiveFfmpeg());
-  streamInfo.init(getMainWindow, proxy.runFfprobeCommand, getActiveStream);
-  help.init(getMainWindow);
-  downloadManager.init(getMainWindow, app);
+    // Initialize helper modules
+    proxy.init(getMainWindow, app.getPath('userData'));
+    externalPlayer.init(getMainWindow, () => proxy.killActiveFfmpeg());
+    streamInfo.init(getMainWindow, proxy.runFfprobeCommand, getActiveStream);
+    help.init(getMainWindow);
+    downloadManager.init(getMainWindow, app);
 
-  ipcMain.handle('download:open-in-mpv', (_e, filePath) => externalPlayer.openLocalFileInMpv(filePath));
-});
+    ipcMain.handle('download:open-in-mpv', (_e, filePath) => externalPlayer.openLocalFileInMpv(filePath));
+  });
+}
 
 app.on('window-all-closed', () => {
   proxy.killActiveFfmpeg();
@@ -208,13 +225,16 @@ app.on('will-quit', (e) => {
   isQuitting = true;
   e.preventDefault();
   proxy.stop();
-  downloadManager
-    .shutdown()
+  externalPlayer.killActiveExternal();
+  Promise.race([
+    downloadManager.shutdown(),
+    new Promise((resolve) => setTimeout(resolve, 3000))
+  ])
     .catch((err) => {
       console.error('Error shutting down download manager:', err);
     })
     .finally(() => {
-      app.quit();
+      app.exit(0);
     });
 });
 
